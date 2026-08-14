@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 import config
 from modules import (
@@ -139,6 +140,10 @@ def render_kpis(res: dict):
 def render_event_board(res: dict):
     """高频事件看板：事件名称 / 区域 / 频次 / 趋势 / 风险等级 / 优先级。"""
     events = res["events"]
+
+    def _fmt_score(v):
+        return "%.1f" % v if isinstance(v, (int, float)) else v
+
     board = pd.DataFrame([{
         "事件编号": e["event_id"],
         "事件名称": "%s · %s" % (e["event_subject"], e["event_type"]),
@@ -147,7 +152,7 @@ def render_event_board(res: dict):
         "近7天": e.get("last_7d", 0),
         "趋势": e["trend"],
         "风险等级": e.get("risk_level", ""),
-        "优先级分数": e.get("priority_score", ""),
+        "优先级分数": _fmt_score(e.get("priority_score", "")),
         "建议关注部门": e.get("action_department", ""),
     } for e in events])
     st.dataframe(style_level_column(board, "风险等级"), width="stretch", hide_index=True)
@@ -176,8 +181,10 @@ def render_event_detail(res: dict):
                 ev["first_seen"], ev["last_seen"],
             )
         )
+        score = ev.get("priority_score", "—")
+        score_text = "%.1f" % score if isinstance(score, (int, float)) else score
         st.markdown("**风险等级**：%s（优先级分数 %s）" % (
-            ev.get("risk_level", "—"), ev.get("priority_score", "—")))
+            ev.get("risk_level", "—"), score_text))
         st.info("风险原因：%s" % ev.get("risk_reason", "暂无"))
         st.success("处置建议：%s → %s（持续监控：%s）" % (
             ev.get("action_department", "—"),
@@ -198,7 +205,19 @@ def render_event_detail(res: dict):
         else:
             daily = t.dt.date.value_counts().sort_index().reset_index()
             daily.columns = ["日期", "工单数"]
-            st.bar_chart(daily.set_index("日期"))
+            daily["日期"] = daily["日期"].astype(str)
+            fig = px.bar(
+                daily, x="日期", y="工单数",
+                color_discrete_sequence=["#4c78a8"],
+            )
+            fig.update_layout(
+                # 类目轴 + 自动边距：缩放时 plotly 自动抽稀刻度，标签不再互相遮挡
+                xaxis=dict(type="category", tickangle=-45, automargin=True),
+                yaxis=dict(title="工单数", dtick=1),
+                margin=dict(t=12, b=12, l=12, r=12),
+                height=300,
+            )
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ---- 区域分布 ----
     st.markdown("#### 区域分布")
@@ -208,7 +227,19 @@ def render_event_detail(res: dict):
     else:
         area_dist = areas.value_counts().reset_index()
         area_dist.columns = ["区域", "工单数"]
-        st.bar_chart(area_dist.set_index("区域"))
+        # 横向条形图：区域名平铺在纵轴，避免竖排文字看不懂
+        fig = px.bar(
+            area_dist, x="工单数", y="区域", orientation="h",
+            color_discrete_sequence=["#4c78a8"],
+            text="工单数",
+        )
+        fig.update_layout(
+            xaxis=dict(title="工单数", dtick=1),
+            yaxis=dict(automargin=True, categoryorder="total ascending"),
+            margin=dict(t=12, b=12, l=12, r=24),
+            height=max(180, 56 * len(area_dist) + 90),
+        )
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ---- 典型工单 ----
     st.markdown("#### 典型工单")
