@@ -150,7 +150,7 @@ def render_event_board(res: dict):
         "优先级分数": e.get("priority_score", ""),
         "建议关注部门": e.get("action_department", ""),
     } for e in events])
-    st.dataframe(style_level_column(board, "风险等级"), use_container_width=True, hide_index=True)
+    st.dataframe(style_level_column(board, "风险等级"), width="stretch", hide_index=True)
 
 
 def render_event_detail(res: dict):
@@ -216,7 +216,7 @@ def render_event_detail(res: dict):
     if samples.empty:
         st.caption("暂无样例。")
     else:
-        st.dataframe(samples, use_container_width=True, hide_index=True)
+        st.dataframe(samples, width="stretch", hide_index=True)
 
 
 def render_full_table(res: dict):
@@ -233,7 +233,7 @@ def render_full_table(res: dict):
         "聚类频次": df.get("cluster_size", 0),
         "是否多频": df["is_multi_freq"].map({True: "是", False: "否"}),
     })
-    st.dataframe(view, use_container_width=True, hide_index=True, height=320)
+    st.dataframe(view, width="stretch", hide_index=True, height=320)
 
 
 # ============================ 页面主体 ============================
@@ -244,7 +244,7 @@ st.caption("从海量工单中发现正在形成的高频问题 → 判断风险
 with st.sidebar:
     st.header("数据与参数")
     uploaded = st.file_uploader("上传工单 CSV", type=["csv"])
-    use_sample = st.button("使用内置样例数据演示", use_container_width=True)
+    use_sample = st.button("使用内置样例数据演示", width="stretch")
 
     st.subheader("识别参数")
     freq_threshold = st.slider("多频阈值 FREQ_THRESHOLD", 2, 15, config.FREQ_THRESHOLD)
@@ -262,7 +262,7 @@ with st.sidebar:
     st.subheader("飞书推送（可选）")
     webhook = st.text_input("Webhook 地址", value=config.FEISHU_WEBHOOK, type="password")
 
-    run = st.button("开始分析", type="primary", use_container_width=True)
+    run = st.button("开始分析", type="primary", width="stretch")
 
 # ---- 数据源确定 ----
 df_raw = None
@@ -337,12 +337,12 @@ if "result" in st.session_state:
         c1, c2, c3 = st.columns([1, 1, 2])
         c1.download_button("下载结果 CSV", csv_bytes,
                            file_name="multi_freq_result.csv", mime="text/csv",
-                           use_container_width=True)
+                           width="stretch")
         c2.download_button("下载结果 Excel", excel_bytes,
                            file_name="multi_freq_result.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           use_container_width=True)
-        if c3.button("推送 Top5 高关注事件到飞书", use_container_width=True):
+                           width="stretch")
+        if c3.button("推送 Top5 高关注事件到飞书", width="stretch"):
             ok, msg = feishu_pusher.push_top_events(events, webhook=webhook)
             (st.success if ok else st.warning)(msg)
     except Exception as e:
