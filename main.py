@@ -26,7 +26,7 @@ from modules import (
     event_profiler, risk_analyzer, action_advisor,
     exporter, feishu_pusher,
 )
-from utils.helpers import ensure_dirs, truncate
+from utils.helpers import ensure_dirs, truncate, load_area_coords
 
 st.set_page_config(
     page_title="12345 高频事件智能预警与处置辅助系统",
@@ -196,7 +196,7 @@ def render_event_detail(res: dict):
             st.caption("评分构成（可解释）：" + "｜".join(
                 "%s %.2f" % (k, v) for k, v in bd.items()))
 
-    # ---- 时间趋势 ----
+    # ---- 时间趋势（横向条形，日期平铺） ----
     with right:
         st.markdown("#### 时间趋势")
         t = g["submit_time"].dropna()
@@ -207,19 +207,20 @@ def render_event_detail(res: dict):
             daily.columns = ["日期", "工单数"]
             daily["日期"] = daily["日期"].astype(str)
             fig = px.bar(
-                daily, x="日期", y="工单数",
+                daily, x="工单数", y="日期", orientation="h",
                 color_discrete_sequence=["#4c78a8"],
+                text="工单数",
             )
             fig.update_layout(
-                # 类目轴 + 自动边距：缩放时 plotly 自动抽稀刻度，标签不再互相遮挡
-                xaxis=dict(type="category", tickangle=-45, automargin=True),
-                yaxis=dict(title="工单数", dtick=1),
-                margin=dict(t=12, b=12, l=12, r=12),
-                height=300,
+                xaxis=dict(title="工单数", dtick=1),
+                # 日期按时间升序自下而上，趋势一眼可读
+                yaxis=dict(automargin=True, categoryorder="category ascending"),
+                margin=dict(t=12, b=12, l=12, r=24),
+                height=max(200, 48 * len(daily) + 100),
             )
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-    # ---- 区域分布 ----
+    # ---- 区域分布（地图气泡） ----
     st.markdown("#### 区域分布")
     areas = g["extracted_area"].replace("", None).dropna()
     if areas.empty:
@@ -227,19 +228,44 @@ def render_event_detail(res: dict):
     else:
         area_dist = areas.value_counts().reset_index()
         area_dist.columns = ["区域", "工单数"]
-        # 横向条形图：区域名平铺在纵轴，避免竖排文字看不懂
-        fig = px.bar(
-            area_dist, x="工单数", y="区域", orientation="h",
-            color_discrete_sequence=["#4c78a8"],
-            text="工单数",
-        )
-        fig.update_layout(
-            xaxis=dict(title="工单数", dtick=1),
-            yaxis=dict(automargin=True, categoryorder="total ascending"),
-            margin=dict(t=12, b=12, l=12, r=24),
-            height=max(180, 56 * len(area_dist) + 90),
-        )
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        coords = load_area_coords()
+        area_dist["纬度"] = area_dist["区域"].map(lambda a: coords.get(a, (None, None))[0])
+        area_dist["经度"] = area_dist["区域"].map(lambda a: coords.get(a, (None, None))[1])
+        known = area_dist.dropna(subset=["纬度", "经度"])
+
+        if known.empty:
+            # 坐标词典未覆盖 → 降级横向条形图，保证始终有结果
+            st.caption("当前区域暂无坐标数据，降级为条形图展示。")
+            fig = px.bar(
+                area_dist, x="工单数", y="区域", orientation="h",
+                color_discrete_sequence=["#4c78a8"], text="工单数",
+            )
+            fig.update_layout(
+                xaxis=dict(title="工单数", dtick=1),
+                yaxis=dict(automargin=True, categoryorder="total ascending"),
+                margin=dict(t=12, b=12, l=12, r=24),
+                height=max(180, 56 * len(area_dist) + 90),
+            )
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        else:
+            fig = px.scatter_map(
+                known, lat="纬度", lon="经度",
+                size="工单数", hover_name="区域",
+                hover_data={"纬度": False, "经度": False, "工单数": True},
+                color_discrete_sequence=["#e74c3c"],
+                size_max=32, zoom=11,
+                center=dict(lat=float(known["纬度"].mean()),
+                            lon=float(known["经度"].mean())),
+                map_style="open-street-map",
+            )
+            fig.update_layout(
+                margin=dict(t=12, b=12, l=12, r=12),
+                height=420,
+            )
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            uncovered = area_dist[~area_dist["区域"].isin(known["区域"])]
+            if not uncovered.empty:
+                st.caption("坐标词典未覆盖区域（未上图）：" + "、".join(uncovered["区域"]))
 
     # ---- 典型工单 ----
     st.markdown("#### 典型工单")

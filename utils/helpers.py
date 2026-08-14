@@ -62,3 +62,28 @@ def truncate(text: str, n: int = 60) -> str:
     """截断文本用于展示，超长加省略号。"""
     text = str(text)
     return text if len(text) <= n else text[: n] + "…"
+
+
+def load_area_coords() -> dict:
+    """
+    加载区域中心点坐标 area_coordinates.csv（area,lat,lon）。
+
+    返回 {区域名: (纬度, 经度)}；文件缺失或解析失败时返回空字典，
+    地图展示会自动降级，不阻断主流程。
+    """
+    path = os.path.join(config.DICT_DIR, "area_coordinates.csv")
+    coords = {}
+    try:
+        df = pd.read_csv(path, dtype=str).fillna("")
+        for _, row in df.iterrows():
+            area = str(row.iloc[0]).strip()
+            try:
+                lat = float(row.iloc[1])
+                lon = float(row.iloc[2])
+            except (ValueError, IndexError):
+                continue
+            if area:
+                coords[area] = (lat, lon)
+    except Exception:
+        return {}
+    return coords
