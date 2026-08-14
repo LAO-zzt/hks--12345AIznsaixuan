@@ -60,8 +60,19 @@ def _match_event_vec(texts: pd.Series, event_terms: list) -> pd.Series:
     return res
 
 
+def _clean_area_match(s: str) -> str:
+    """清洗通用正则的区域匹配：截掉首个 区/市/县 之前的残字。"""
+    if not s:
+        return ""
+    for sep in ("区", "市", "县"):
+        idx = s.find(sep)
+        if 0 <= idx < len(s) - 2:
+            return s[idx + 1:]
+    return s
+
+
 def _match_area_vec(texts: pd.Series) -> pd.Series:
-    """向量化区域提取：先区域词典，再通用“XX街道/XX镇”正则。"""
+    """向量化区域提取：先区域词典，再通用“XX街道/XX镇”正则（结果清洗）。"""
     res = pd.Series([""] * len(texts), index=texts.index, dtype=object)
     dict_re = _area_patterns()
     if dict_re:
@@ -71,6 +82,7 @@ def _match_area_vec(texts: pd.Series) -> pd.Series:
     miss = res == ""
     if miss.any():
         generic = texts[miss].str.extract(_GENERIC_AREA_RE)[0].fillna("")
+        generic = generic.map(_clean_area_match)
         res[miss] = generic.values
     return res
 

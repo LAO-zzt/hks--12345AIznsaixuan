@@ -99,10 +99,10 @@ def build_event_profiles(df, ref_now=None, max_events=None):
         last_24h = int((times_valid > ref_now - timedelta(days=1)).sum()) if not times_valid.empty else 0
         last_7d = int((times_valid > ref_now - timedelta(days=7)).sum()) if not times_valid.empty else 0
 
-        # 样例工单（最多 3 条）
+        # 样例工单（最多 8 条，供前端溯源展示）
         samples = [
             {"order_id": r.order_id, "content": truncate(r.content, 80)}
-            for r in g.head(3).itertuples()
+            for r in g.head(8).itertuples()
         ]
 
         # 主体展示：同事件涉及多个主体时不冒用单一主体名义

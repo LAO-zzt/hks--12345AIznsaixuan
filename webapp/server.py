@@ -140,6 +140,7 @@ def _build_payload(df, events, info, warnings) -> dict:
             "breakdown": e.get("score_breakdown", {}),
             "department": e.get("action_department", ""),
             "advice": e.get("action_advice", ""),
+            "advice_source": e.get("advice_source", "rules"),
             "monitor": e.get("monitor_required", ""),
             "is_key": e.get("is_key_event", ""),
             "samples": e.get("sample_orders", []),
@@ -204,6 +205,8 @@ def datafiles():
     files = []
     try:
         for name in sorted(os.listdir(config.INPUT_DIR)):
+            if name.lower() == "sample.csv":
+                continue  # 内置样例走专用按钮，下拉只列真实数据文件
             if name.lower().endswith((".csv", ".xlsx", ".xlsm")):
                 fpath = os.path.join(config.INPUT_DIR, name)
                 files.append({
@@ -224,6 +227,8 @@ async def analyze(
     eps: float = Form(config.CLUSTER_EPS),
     min_samples: int = Form(config.CLUSTER_MIN_SAMPLES),
     use_embedding: bool = Form(False),
+    use_llm: bool = Form(False),
+    llm_key: str = Form(""),
 ):
     """执行全链路分析：加载→标准化→实体→聚类→多频→画像→风险→建议。"""
     warnings = []
@@ -278,7 +283,7 @@ async def analyze(
         cache_key = None
         if cache_seed:
             cache_key = _result_cache_key(
-                cache_seed, scope, freq_threshold, eps, min_samples, use_embedding)
+                cache_seed, scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
             cached = _load_result_cache(cache_key)
             if cached is not None:
                 STATE["df"], STATE["events"] = cached["df"], cached["events"]
@@ -306,6 +311,36 @@ async def analyze(
             events = action_advisor.advise_actions(events)
         except Exception as e:
             warnings.append("处置建议生成失败：%s" % e)
+
+        # ---- LLM 建议增强：规则词典未命中的事件交给 DeepSeek 兜底 ----
+        if use_llm and events:
+            from modules import llm_advisor
+            api_key = (llm_key or "").strip() or os.environ.get("DEEPSEEK_API_KEY", "")
+            if not api_key:
+                warnings.append("已开启 LLM 建议增强，但未检测到 DeepSeek API Key"
+                                "（页面参数区粘贴或设环境变量 DEEPSEEK_API_KEY），本次用规则词典结果。")
+            else:
+                unmatched = [e for e in events
+                             if e.get("action_department") == "需人工研判"][:60]
+                llm_map = {}
+                if unmatched:
+                    try:
+                        llm_map = llm_advisor.llm_advise(unmatched, api_key)
+                    except Exception:
+                        llm_map = {}
+                hit = 0
+                for e in events:
+                    if e.get("action_department") == "需人工研判":
+                        r = llm_map.get(e.get("event_type", ""))
+                        if r:
+                            e["action_department"] = r["department"]
+                            e["action_advice"] = r["advice"]
+                            e["advice_source"] = "LLM"
+                            hit += 1
+                if hit:
+                    warnings.append("DeepSeek 已为 %d 个事件生成处置建议（详情中标注“AI 生成”）。" % hit)
+                if len(unmatched) > hit:
+                    warnings.append("仍有 %d 个事件未匹配到处置建议，保持“需人工研判”。" % (len(unmatched) - hit))
 
         STATE["df"], STATE["events"] = df, events
         if cache_key:

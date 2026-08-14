@@ -155,12 +155,15 @@
   .kpi .lbl { font-size: 13px; color: var(--muted); margin-top: 6px; }
   .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-  .board-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .board-grid { display: block; }
+  .board-scroll { max-height: 430px; overflow-y: auto; }
+  .h-note { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 10px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th {
     text-align: left; color: var(--muted); font-weight: 600; font-size: 12px;
     padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+    position: sticky; top: 0; background: var(--panel); z-index: 2;
   }
   td { padding: 10px; border-bottom: 1px solid rgba(34, 48, 77, .55); vertical-align: middle; }
   .clickable tbody tr { cursor: pointer; transition: background .12s; }
@@ -178,17 +181,20 @@
   .trend-down { color: var(--green); font-weight: 700; }
   .trend-flat, .trend-unknown { color: var(--muted); }
 
-  /* ---------- 事件详情 ---------- */
+  /* ---------- 事件详情（全宽两行网格） ---------- */
   #detail-empty { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px; }
-  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 13px; }
-  .meta-grid .k { color: var(--muted); font-size: 12px; }
-  .meta-grid .v { margin-top: 2px; }
-  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 6px; }
-  .chart-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
-  .chart-box h3 { margin: 2px 0 0 6px; }
+  .detail-grid-a { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; }
+  .detail-grid-b { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; margin-top: 18px; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; font-size: 14px; }
+  .meta-grid .k { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  .meta-grid .v { font-size: 14px; }
+  .chart-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .chart-box h3 { margin: 2px 0 4px 6px; }
   .chart { width: 100%; height: 210px; }
+  .chart-lg { height: 300px; }
+  .area-note { font-size: 12px; color: var(--muted); margin: 8px 6px 2px; line-height: 1.6; }
   .risk-box, .advice-box {
-    border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7; margin-top: 12px;
+    border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7; margin-top: 14px;
   }
   .risk-box { background: rgba(244, 87, 77, .07); border: 1px solid rgba(244, 87, 77, .28); }
   .advice-box { background: rgba(45, 212, 191, .06); border: 1px solid rgba(45, 212, 191, .28); }
@@ -196,6 +202,21 @@
   .risk-box b { color: var(--red); }
   .advice-box b { color: var(--cyan); }
   .score-line { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .ai-badge {
+    display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px;
+    background: rgba(61, 126, 255, .18); color: #7ea8ff; border: 1px solid rgba(61, 126, 255, .5);
+    margin-left: 8px; vertical-align: 1px;
+  }
+  .sample-scroll { max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .sample-scroll table { font-size: 12.5px; }
+  .sample-scroll tbody tr { cursor: pointer; }
+  .sample-scroll tbody tr:hover { background: rgba(45, 212, 191, .07); }
+  @keyframes rowflash {
+    0% { background: rgba(245, 166, 35, .55); }
+    100% { background: transparent; }
+  }
+  #orders-table tbody tr.flash { animation: rowflash 2.2s ease-out; }
+  .check-inline { display: flex; align-items: center; gap: 8px; }
 
   .table-scroll { max-height: 340px; overflow-y: auto; }
   .warn-wrap { margin-bottom: 16px; }
@@ -290,6 +311,12 @@
           <input type="checkbox" id="p-emb">
           <span>启用本地 Embedding（可选，模型缺失自动回退 TF-IDF）</span>
         </div>
+        <div class="check-row">
+          <input type="checkbox" id="p-llm">
+          <span>启用 LLM 处置建议增强（DeepSeek，词典未命中事件自动生成建议）</span>
+        </div>
+        <input class="webhook-input hidden" id="p-llm-key" type="password"
+               placeholder="DeepSeek API Key（也可通过环境变量 DEEPSEEK_API_KEY 配置）" style="margin-bottom:10px">
         <details>
           <summary>高级参数说明（开发调试用）</summary>
           <p>风险权重：频次 0.35 / 趋势 0.30 / 集中度 0.15 / 敏感度 0.20<br>
@@ -317,9 +344,9 @@
     <div id="warnings"></div>
     <div class="kpi-row" id="kpi-row"></div>
 
-    <div class="board-grid">
-      <div class="card">
-        <h2>高频事件看板</h2>
+    <div class="card" style="margin-bottom:20px">
+      <h2>高频事件看板<span class="h-note">点击任意一行查看事件详情</span></h2>
+      <div class="board-scroll">
         <table class="clickable" id="event-table">
           <thead>
             <tr>
@@ -330,29 +357,38 @@
           <tbody></tbody>
         </table>
       </div>
+    </div>
 
-      <div class="card">
-        <h2>事件详情</h2>
-        <div id="detail-empty">点击左侧事件查看详细画像、趋势与处置建议</div>
-        <div id="detail-body" class="hidden">
-          <div class="meta-grid" id="detail-meta"></div>
-          <div class="charts-row">
-            <div class="chart-box">
-              <h3>时间趋势</h3>
-              <div class="chart" id="chart-trend"></div>
-            </div>
-            <div class="chart-box">
-              <h3 id="area-chart-title">区域分布</h3>
-              <div class="chart" id="chart-area"></div>
+    <div class="card">
+      <h2>事件详情</h2>
+      <div id="detail-empty">点击上方看板中的事件，查看详细画像、趋势与处置建议</div>
+      <div id="detail-body" class="hidden">
+        <div class="detail-grid-a">
+          <div>
+            <div class="meta-grid" id="detail-meta"></div>
+            <div class="risk-box" id="risk-box"></div>
+            <div class="advice-box" id="advice-box"></div>
+          </div>
+          <div class="chart-box">
+            <h3>时间趋势</h3>
+            <div class="chart chart-lg" id="chart-trend"></div>
+          </div>
+        </div>
+        <div class="detail-grid-b">
+          <div class="chart-box">
+            <h3 id="area-chart-title">区域分布</h3>
+            <div class="chart chart-lg" id="chart-area"></div>
+            <div class="area-note" id="area-note"></div>
+          </div>
+          <div>
+            <h3>典型工单<span class="h-note">点击可在下方完整工单表中定位来源</span></h3>
+            <div class="sample-scroll">
+              <table id="sample-table">
+                <thead><tr><th style="width:160px">工单编号</th><th>诉求内容</th></tr></thead>
+                <tbody></tbody>
+              </table>
             </div>
           </div>
-          <div class="risk-box" id="risk-box"></div>
-          <div class="advice-box" id="advice-box"></div>
-          <h3>典型工单</h3>
-          <table id="sample-table">
-            <thead><tr><th style="width:150px">工单编号</th><th>诉求内容</th></tr></thead>
-            <tbody></tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -459,6 +495,9 @@ $("btn-sample").addEventListener("click", () => {
 $("btn-analyze").addEventListener("click", () => runAnalysis());
 $("btn-back").addEventListener("click", () => showPage("config"));
 $("btn-feishu").addEventListener("click", pushFeishu);
+$("p-llm").addEventListener("change", () => {
+  $("p-llm-key").classList.toggle("hidden", !$("p-llm").checked);
+});
 
 /* ================= 分析 ================= */
 async function runAnalysis() {
@@ -470,6 +509,8 @@ async function runAnalysis() {
   fd.append("min_samples", $("p-min").value);
   fd.append("use_embedding", $("p-emb").checked ? "true" : "false");
   fd.append("scope", (document.querySelector('input[name="scope"]:checked') || {}).value || "all");
+  fd.append("use_llm", $("p-llm").checked ? "true" : "false");
+  fd.append("llm_key", $("p-llm-key").value.trim());
   if (state.file) {
     fd.append("file", state.file);
   } else if ($("file-select").value) {
@@ -532,9 +573,9 @@ function renderResults() {
   $("event-table").querySelectorAll("tbody tr").forEach(tr =>
     tr.addEventListener("click", () => selectEvent(+tr.dataset.i)));
 
-  // 完整工单表
+  // 完整工单表（带 data-oid 供典型工单溯源定位）
   $("orders-table").querySelector("tbody").innerHTML = p.orders.map(o =>
-    "<tr>" +
+    '<tr data-oid="' + esc(o.order_id) + '">' +
     "<td>" + esc(o.order_id) + "</td>" +
     "<td>" + esc(o.content) + "</td>" +
     "<td>" + esc(o.subject || "—") + "</td>" +
@@ -579,16 +620,32 @@ function selectEvent(i) {
         Object.entries(e.breakdown).map(([k2, v]) => esc(k2) + " " + v).join(" ｜ ") + "</div>"
       : "");
 
-  $("advice-box").innerHTML = "<b>处置建议</b>" +
+  const aiBadge = e.advice_source === "LLM" ? '<span class="ai-badge">AI 生成</span>' : "";
+  $("advice-box").innerHTML = "<b>处置建议" + aiBadge + "</b>" +
     "建议关注：" + esc(e.department || "需人工研判") + "<br>" +
     "建议动作：" + esc(e.advice || "—") + "<br>" +
     "持续监控：" + esc(e.monitor || "—") + "　·　重点事件：" + esc(e.is_key || "—");
 
   $("sample-table").querySelector("tbody").innerHTML = (e.samples || []).map(s =>
-    "<tr><td>" + esc(s.order_id) + "</td><td>" + esc(s.content) + "</td></tr>").join("");
+    '<tr data-oid="' + esc(s.order_id) + '"><td>' + esc(s.order_id) + "</td><td>" + esc(s.content) + "</td></tr>").join("");
+  $("sample-table").querySelectorAll("tbody tr").forEach(tr =>
+    tr.addEventListener("click", () => jumpToOrder(tr.dataset.oid)));
 
   drawTrend(e);
   drawArea(e);
+}
+
+/* 典型工单溯源：在完整工单表中定位来源行并高亮 */
+function jumpToOrder(oid) {
+  const tr = $("orders-table").querySelector('tr[data-oid="' + oid + '"]');
+  if (!tr) {
+    toast("该工单不在当前明细展示范围内（明细按多频优先展示前 2000 条），可下载完整结果查询。", true);
+    return;
+  }
+  tr.scrollIntoView({ block: "center", behavior: "smooth" });
+  tr.classList.remove("flash");
+  void tr.offsetWidth;   // 重置动画
+  tr.classList.add("flash");
 }
 function meta(k, v) {
   return '<div><div class="k">' + esc(k) + '</div><div class="v">' + (String(v).startsWith("<") ? v : esc(v)) + "</div></div>";
@@ -607,12 +664,21 @@ function drawTrend(e) {
   const el = $("chart-trend");
   if (!state.trendChart) state.trendChart = echarts.init(el);
   const c = state.trendChart;
-  const dates = (e.daily || []).map(d => d.date.slice(5));
-  const vals = (e.daily || []).map(d => d.count);
+  let dates = (e.daily || []).map(d => d.date.slice(5));
+  let vals = (e.daily || []).map(d => d.count);
   if (!dates.length) {
     c.clear();
     c.setOption({ title: { text: "缺少有效时间字段", left: "center", top: "middle", textStyle: { color: AXIS_COLOR, fontSize: 13, fontWeight: 400 } } });
     return;
+  }
+  // 长周期（>31 天）按 7 天分桶汇总，保证可读性
+  if (dates.length > 31) {
+    const bd = [], bv = [];
+    for (let i = 0; i < dates.length; i += 7) {
+      bd.push(dates[i]);
+      bv.push(vals.slice(i, i + 7).reduce((a, b) => a + b, 0));
+    }
+    dates = bd; vals = bv;
   }
   const opt = baseOpt();
   opt.tooltip.axisPointer = { type: "shadow" };
@@ -630,9 +696,10 @@ function drawArea(e) {
   const el = $("chart-area");
   const areas = e.areas || [];
   const withCoords = areas.filter(a => a.lat != null && a.lon != null);
+  const noCoords = areas.filter(a => a.lat == null || a.lon == null);
 
-  // ---- 全部区域有坐标：Leaflet 真实底图地图 ----
-  if (areas.length && withCoords.length === areas.length && window.L) {
+  // ---- 有坐标区域：Leaflet 真实底图地图 ----
+  if (withCoords.length && window.L) {
     $("area-chart-title").textContent = "区域分布（地图）";
     if (state.areaChart) { state.areaChart.dispose(); state.areaChart = null; }
     if (state.leafletMap) { state.leafletMap.remove(); state.leafletMap = null; }
@@ -656,11 +723,17 @@ function drawArea(e) {
     if (bounds.length === 1) map.setView(bounds[0], 12);
     else map.fitBounds(bounds, { padding: [36, 36] });
     state.leafletMap = map;
+    // 坐标词典未覆盖的区域备注说明
+    $("area-note").innerHTML = noCoords.length
+      ? "未上图区域：" + noCoords.slice(0, 5).map(a => esc(a.area) + " " + a.count + "条").join("、") +
+        (noCoords.length > 5 ? " 等 " + noCoords.length + " 个" : "")
+      : "";
     return;
   }
 
-  // ---- 降级：echarts 横向条形图（坐标缺失或 Leaflet 不可用） ----
+  // ---- 降级：echarts 横向条形图（无坐标或 Leaflet 不可用） ----
   $("area-chart-title").textContent = "区域分布";
+  $("area-note").innerHTML = "";
   if (state.leafletMap) { state.leafletMap.remove(); state.leafletMap = null; }
   if (state.areaChart) { state.areaChart.dispose(); state.areaChart = null; }
   el.innerHTML = "";
@@ -670,11 +743,12 @@ function drawArea(e) {
     c.setOption({ title: { text: "缺少区域信息", left: "center", top: "middle", textStyle: { color: AXIS_COLOR, fontSize: 13, fontWeight: 400 } } });
     return;
   }
+  const top = areas.slice(0, 12);
   const opt = baseOpt();
   opt.xAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
-  opt.yAxis = { type: "category", data: areas.map(a => a.area).reverse(), axisLabel: { color: "#c6cfdf" }, axisTick: { show: false }, axisLine: { show: false } };
+  opt.yAxis = { type: "category", data: top.map(a => a.area).reverse(), axisLabel: { color: "#c6cfdf" }, axisTick: { show: false }, axisLine: { show: false } };
   opt.series = [{
-    type: "bar", data: areas.map(a => a.count).reverse(), barWidth: 14,
+    type: "bar", data: top.map(a => a.count).reverse(), barWidth: 14,
     itemStyle: { borderRadius: [0, 6, 6, 0], color: "#3d7eff" },
     label: { show: true, position: "right", color: "#c6cfdf", fontSize: 12 },
   }];
