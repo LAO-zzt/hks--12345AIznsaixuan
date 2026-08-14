@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 输出结果（每次运行重新生成，不入库）
+data/output/
+
+# 本地模型（体积大，不入库）
+models/
+
+# 环境与密钥
+.env
+*.log
+
+# IDE
+.idea/
+.vscode/
