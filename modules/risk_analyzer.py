@@ -40,13 +40,14 @@ def _area_concentration(df_cluster: pd.DataFrame) -> float:
 
 
 def _sensitivity(df_cluster: pd.DataFrame, sensitive_terms: list) -> list:
-    """返回该簇工单命中的敏感词列表（未命中为空）。"""
+    """返回该簇工单命中的敏感词列表（未命中为空）。最多扫描前300条，防超大簇卡顿。"""
     if not sensitive_terms:
         return []
     texts = (
         df_cluster.get("normalized_content", df_cluster.get("content", pd.Series()))
         .fillna("").astype(str)
     )
+    texts = texts.head(300)
     hits = []
     joined = " ".join(texts.tolist())
     for term in sensitive_terms:
@@ -93,11 +94,24 @@ def analyze_risks(events: list, df: pd.DataFrame) -> list:
         "sensitivity": config.RISK_WEIGHT_SENSITIVITY,
     }
 
+    # 只对事件涉及的簇分组，避免全量簇物化（十万级数据性能关键）
+    needed = set(ev["cluster_id"] for ev in events)
+    sub = df[df["cluster_id"].isin(needed)]
+    grouped = dict(tuple(sub.groupby("cluster_id")))
+
+    # 频次分相对基数：本批最大事件频次（小数据退化为阈值4倍）
+    max_freq = max([ev["frequency"] for ev in events] + [1])
+    freq_base = max(config.FREQ_THRESHOLD * 4, max_freq)
+    # 大体量保底阈值：最大事件的 10% 且不低于 50
+    volume_floor = max(50, int(0.1 * max_freq))
+
     for ev in events:
         try:
-            g = df[df["cluster_id"] == ev["cluster_id"]]
+            g = grouped.get(ev["cluster_id"])
+            if g is None or g.empty:
+                raise KeyError("cluster 缺失")
 
-            f_score = _frequency_score(ev["frequency"])
+            f_score = min(1.0, ev["frequency"] / freq_base)
             t_score = TREND_SCORE.get(ev.get("trend", "无法判断"), 0.3)
             a_score = _area_concentration(g)
             hits = _sensitivity(g, sensitive_terms)
@@ -118,16 +132,26 @@ def analyze_risks(events: list, df: pd.DataFrame) -> list:
             else:
                 ev["risk_level"] = "一般"
 
+            # 大体量保底：头部问题不因趋势平稳而被小簇高趋势压过
+            if ev["frequency"] >= volume_floor and ev["risk_level"] != "高关注":
+                ev["risk_level"] = "高关注"
+                ev["risk_reason_extra"] = "该事件体量进入本批前10%%（≥%d次），列为高关注。" % volume_floor
+
             # 集中度描述
             areas = g.get("extracted_area", pd.Series()).astype(str).str.strip()
             areas = areas[areas != ""]
             if not areas.empty:
-                top_area, ratio = areas.value_counts(normalize=True).index[0], areas.value_counts(normalize=True).iloc[0]
+                vc = areas.value_counts(normalize=True)
+                top_area, ratio = vc.index[0], vc.iloc[0]
                 area_text = "集中发生于%s（占%.0f%%）" % (top_area, ratio * 100) if ratio >= 0.6 else ""
             else:
                 area_text = ""
 
-            ev["risk_reason"] = _build_reason(ev, area_text, hits)
+            reason = _build_reason(ev, area_text, hits)
+            if ev.get("risk_reason_extra"):
+                reason += " " + ev["risk_reason_extra"]
+                del ev["risk_reason_extra"]
+            ev["risk_reason"] = reason
             ev["score_breakdown"] = {
                 "频次分": round(f_score, 2),
                 "趋势分": round(t_score, 2),

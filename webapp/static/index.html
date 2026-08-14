@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>12345 高频事件智能预警与处置辅助系统</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
 <script src="/static/vendor/echarts.min.js"></script>
+<script src="/static/vendor/leaflet.js"></script>
 <style>
   :root {
     --bg: #0a111f;
@@ -86,11 +88,14 @@
   .btn:disabled { opacity: .55; cursor: not-allowed; }
 
   /* ---------- 页面① 配置 ---------- */
-  .config-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+  .config-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: stretch; }
+  .upload-card { display: flex; flex-direction: column; }
   #drop-zone {
     border: 1.5px dashed #33456b; border-radius: 10px;
     padding: 40px 20px; text-align: center; cursor: pointer;
     transition: all .15s ease; background: rgba(61, 126, 255, .03);
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    min-height: 300px;
   }
   #drop-zone:hover, #drop-zone.drag { border-color: var(--accent); background: rgba(61, 126, 255, .08); }
   .dz-ico { font-size: 34px; margin-bottom: 10px; }
@@ -98,6 +103,23 @@
   #drop-zone .muted { font-size: 12px; margin-top: 6px; }
   .file-name { margin-top: 12px; font-size: 13px; color: var(--cyan); font-weight: 600; }
   .btn-sample { width: 100%; margin-top: 14px; }
+
+  .local-files { margin-top: 14px; }
+  .local-files label { font-size: 12px; color: var(--muted); }
+  .file-select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 13px; padding: 9px 12px; margin-top: 6px;
+  }
+  .scope-row { display: flex; align-items: center; gap: 16px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .scope-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .scope-row input { accent-color: var(--accent); }
+  .scope-row .scope-label { color: var(--text); font-weight: 600; }
+
+  .params-card { display: flex; flex-direction: column; }
+  .card-foot {
+    margin-top: auto; padding-top: 16px; text-align: right;
+    color: #4a5872; font-size: 12px; letter-spacing: 1px;
+  }
 
   .param-row { margin-bottom: 18px; }
   .param-row label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
@@ -176,10 +198,18 @@
   .score-line { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
   .table-scroll { max-height: 340px; overflow-y: auto; }
+  .warn-wrap { margin-bottom: 16px; }
+  .warn-wrap summary {
+    font-size: 13px; color: var(--amber); cursor: pointer;
+    background: rgba(245, 166, 35, .08); border: 1px solid rgba(245, 166, 35, .25);
+    border-radius: 8px; padding: 8px 14px; list-style: none;
+  }
+  .warn-wrap summary::before { content: "▸ "; }
+  .warn-wrap[open] summary::before { content: "▾ "; }
   .warn-bar {
     background: rgba(245, 166, 35, .1); border: 1px solid rgba(245, 166, 35, .35);
     color: var(--amber); font-size: 13px; border-radius: 8px;
-    padding: 10px 14px; margin-bottom: 16px;
+    padding: 10px 14px; margin-top: 10px;
   }
   #toast {
     position: fixed; top: 22px; left: 50%; transform: translateX(-50%);
@@ -191,10 +221,6 @@
   #toast.show { opacity: 1; }
   #toast.err { border-color: var(--red); color: #ffb4ae; }
 
-  footer {
-    text-align: center; color: #4a5872; font-size: 12px;
-    padding: 18px 0 30px; letter-spacing: 1px;
-  }
   @media (max-width: 1100px) {
     .config-grid, .board-grid, .charts-row { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -222,7 +248,7 @@
   <!-- ================= 页面① 数据与参数 ================= -->
   <section id="page-config">
     <div class="config-grid">
-      <div class="card">
+      <div class="card upload-card">
         <h2>① 上传工单数据</h2>
         <div id="drop-zone">
           <input type="file" id="file-input" accept=".csv" hidden>
@@ -231,10 +257,22 @@
           <p class="muted">自动识别中英文列名 · 内置去重与清洗</p>
           <div class="file-name" id="file-name"></div>
         </div>
+        <div class="local-files">
+          <label>或直接选择本地数据文件（真实数据放入 data/input 目录即可识别）</label>
+          <select class="file-select" id="file-select">
+            <option value="">（使用内置样例数据）</option>
+          </select>
+        </div>
+        <div class="scope-row">
+          <span class="scope-label">分析范围</span>
+          <label><input type="radio" name="scope" value="all" checked> 全部</label>
+          <label><input type="radio" name="scope" value="d30"> 近30天</label>
+          <label><input type="radio" name="scope" value="d60"> 近60天</label>
+        </div>
         <button class="btn btn-sample" id="btn-sample">使用内置样例数据演示（37 条 · 5 类高频事件场景）</button>
       </div>
 
-      <div class="card">
+      <div class="card params-card">
         <h2>② 识别参数</h2>
         <div class="param-row">
           <label>多频阈值 FREQ_THRESHOLD <b id="v-freq">3</b></label>
@@ -261,6 +299,7 @@
         <h2 style="margin-top:20px">③ 飞书推送（可选）</h2>
         <input class="webhook-input" id="p-webhook" type="password" placeholder="飞书群机器人 Webhook 地址（留空则跳过推送）">
         <button class="btn primary big" id="btn-analyze">开 始 分 析</button>
+        <div class="card-foot">12345 高频事件智能预警与处置辅助系统 · 顺德区政务热线智能分析 · V2.0</div>
       </div>
     </div>
   </section>
@@ -335,12 +374,11 @@
   </section>
 </main>
 
-<footer>12345 高频事件智能预警与处置辅助系统 · 顺德区政务热线智能分析 · V2.0</footer>
 <div id="toast"></div>
 
 <script>
 /* ================= 全局状态 ================= */
-const state = { file: null, payload: null, selected: -1, trendChart: null, areaChart: null };
+const state = { file: null, payload: null, selected: -1, trendChart: null, areaChart: null, leafletMap: null };
 const $ = (id) => document.getElementById(id);
 
 /* ================= 通用 ================= */
@@ -384,8 +422,29 @@ fi.addEventListener("change", () => { if (fi.files.length) setFile(fi.files[0]);
 function setFile(f) {
   if (!f.name.toLowerCase().endsWith(".csv")) { toast("请上传 CSV 文件", true); return; }
   state.file = f;
+  $("file-select").value = "";
   $("file-name").textContent = "已选择：" + f.name + "（" + (f.size / 1024).toFixed(1) + " KB）";
 }
+
+/* 本地数据文件列表（真实数据放入 data/input 即出现） */
+async function loadLocalFiles() {
+  try {
+    const res = await fetch("/api/datafiles");
+    const data = await res.json();
+    const sel = $("file-select");
+    sel.innerHTML = '<option value="">（使用内置样例数据）</option>';
+    (data.files || []).forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.name;
+      opt.textContent = f.name + "（" + f.size_mb + " MB）";
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* 列表加载失败不影响主流程 */ }
+}
+loadLocalFiles();
+$("file-select").addEventListener("change", () => {
+  state.file = null; fi.value = ""; $("file-name").textContent = "";
+});
 
 ["freq", "eps", "min"].forEach(k => {
   $("p-" + k).addEventListener("input", () => {
@@ -394,7 +453,9 @@ function setFile(f) {
   });
 });
 
-$("btn-sample").addEventListener("click", () => { state.file = null; $("file-name").textContent = ""; runAnalysis(); });
+$("btn-sample").addEventListener("click", () => {
+  state.file = null; $("file-name").textContent = ""; $("file-select").value = ""; runAnalysis();
+});
 $("btn-analyze").addEventListener("click", () => runAnalysis());
 $("btn-back").addEventListener("click", () => showPage("config"));
 $("btn-feishu").addEventListener("click", pushFeishu);
@@ -408,7 +469,12 @@ async function runAnalysis() {
   fd.append("eps", $("p-eps").value);
   fd.append("min_samples", $("p-min").value);
   fd.append("use_embedding", $("p-emb").checked ? "true" : "false");
-  if (state.file) fd.append("file", state.file);
+  fd.append("scope", (document.querySelector('input[name="scope"]:checked') || {}).value || "all");
+  if (state.file) {
+    fd.append("file", state.file);
+  } else if ($("file-select").value) {
+    fd.append("datafile", $("file-select").value);
+  }
   try {
     const res = await fetch("/api/analyze", { method: "POST", body: fd });
     const data = await res.json();
@@ -431,8 +497,11 @@ function renderResults() {
     "识别完成：共 <b>" + p.kpis.total_orders + "</b> 条工单，识别出 <b>" +
     p.kpis.multi_events + "</b> 个多频事件 · 识别路线：" + esc(p.method || "—");
 
-  $("warnings").innerHTML = (p.warnings || [])
-    .map(w => '<div class="warn-bar">⚠ ' + esc(w) + "</div>").join("");
+  const ws = p.warnings || [];
+  $("warnings").innerHTML = ws.length
+    ? '<details class="warn-wrap"><summary>识别过程说明（' + ws.length + ' 条，点击展开）</summary>' +
+      ws.map(w => '<div class="warn-bar">⚠ ' + esc(w) + "</div>").join("") + "</details>"
+    : "";
 
   const k = p.kpis;
   $("kpi-row").innerHTML =
@@ -441,19 +510,25 @@ function renderResults() {
     kpiCard(k.high_events, "高关注事件", "建议优先处置", "k-red") +
     kpiCard(k.biggest_event, "最大频次事件", "涉及工单最多", "k-amber", true);
 
-  // 事件看板
-  $("event-table").querySelector("tbody").innerHTML = p.events.map((e, i) =>
-    '<tr data-i="' + i + '">' +
+  // 事件看板（主体缺失/占位时只显示事件类型，适配真实数据）
+  $("event-table").querySelector("tbody").innerHTML = p.events.map((e, i) => {
+    const noSubject = !e.subject || e.subject.startsWith("（") || e.subject.startsWith("多主体聚合");
+    const name = noSubject ? e.type : e.subject;
+    const sub = noSubject
+      ? (e.area && !e.area.startsWith("（") ? e.area : "")
+      : (e.type + (e.area && !e.area.startsWith("（") ? " · " + e.area : ""));
+    return '<tr data-i="' + i + '">' +
     "<td>" + esc(e.event_id) + "</td>" +
-    '<td><div class="ev-name">' + esc(e.subject) + "</div>" +
-    '<div class="ev-sub">' + esc(e.type) + "</div></td>" +
+    '<td><div class="ev-name">' + esc(name) + "</div>" +
+    '<div class="ev-sub">' + esc(sub) + "</div></td>" +
     "<td>" + esc(e.area) + "</td>" +
     "<td><b>" + e.frequency + "</b></td>" +
     "<td>" + e.last_7d + "</td>" +
     "<td>" + trendSpan(e.trend) + "</td>" +
     "<td>" + riskBadge(e.risk_level) + "</td>" +
     "<td>" + Number(e.priority_score || 0).toFixed(1) + "</td>" +
-    "</tr>").join("");
+    "</tr>";
+  }).join("");
   $("event-table").querySelectorAll("tbody tr").forEach(tr =>
     tr.addEventListener("click", () => selectEvent(+tr.dataset.i)));
 
@@ -553,69 +628,62 @@ function drawTrend(e) {
 }
 function drawArea(e) {
   const el = $("chart-area");
-  if (!state.areaChart) state.areaChart = echarts.init(el);
-  const c = state.areaChart;
   const areas = e.areas || [];
+  const withCoords = areas.filter(a => a.lat != null && a.lon != null);
+
+  // ---- 全部区域有坐标：Leaflet 真实底图地图 ----
+  if (areas.length && withCoords.length === areas.length && window.L) {
+    $("area-chart-title").textContent = "区域分布（地图）";
+    if (state.areaChart) { state.areaChart.dispose(); state.areaChart = null; }
+    if (state.leafletMap) { state.leafletMap.remove(); state.leafletMap = null; }
+    el.innerHTML = "";
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap 贡献者',
+    }).addTo(map);
+    const maxCount = Math.max.apply(null, withCoords.map(a => a.count));
+    const bounds = [];
+    withCoords.forEach(a => {
+      const r = 8 + 26 * Math.sqrt(a.count / maxCount);
+      const marker = L.circleMarker([a.lat, a.lon], {
+        radius: r, color: "#ffb4ae", weight: 1.5,
+        fillColor: "#f4574d", fillOpacity: 0.6,
+      }).addTo(map);
+      marker.bindTooltip(a.area + " · " + a.count + " 条", { direction: "top", offset: [0, -6] });
+      bounds.push([a.lat, a.lon]);
+    });
+    if (bounds.length === 1) map.setView(bounds[0], 12);
+    else map.fitBounds(bounds, { padding: [36, 36] });
+    state.leafletMap = map;
+    return;
+  }
+
+  // ---- 降级：echarts 横向条形图（坐标缺失或 Leaflet 不可用） ----
+  $("area-chart-title").textContent = "区域分布";
+  if (state.leafletMap) { state.leafletMap.remove(); state.leafletMap = null; }
+  if (state.areaChart) { state.areaChart.dispose(); state.areaChart = null; }
+  el.innerHTML = "";
+  state.areaChart = echarts.init(el);
+  const c = state.areaChart;
   if (!areas.length) {
-    c.clear();
     c.setOption({ title: { text: "缺少区域信息", left: "center", top: "middle", textStyle: { color: AXIS_COLOR, fontSize: 13, fontWeight: 400 } } });
     return;
   }
-  const withCoords = areas.filter(a => a.lat != null && a.lon != null);
-  if (withCoords.length && withCoords.length === areas.length) {
-    // 地理示意散点：经纬度坐标，气泡大小=工单数
-    $("area-chart-title").textContent = "区域分布（地理示意）";
-    const lons = withCoords.map(a => a.lon), lats = withCoords.map(a => a.lat);
-    const pad = (arr) => {
-      const lo = Math.min.apply(null, arr), hi = Math.max.apply(null, arr);
-      const span = Math.max(hi - lo, 0.03);
-      return [lo - span * 0.6, hi + span * 0.6];
-    };
-    const opt = {
-      textStyle: { fontFamily: "Microsoft YaHei" },
-      tooltip: {
-        backgroundColor: "#182642", borderColor: "#22304d", textStyle: { color: "#e8edf7", fontSize: 12 },
-        formatter: p => p.data.name + "<br>工单数：" + p.data.value[2],
-      },
-      grid: { left: 12, right: 18, top: 16, bottom: 8, containLabel: true },
-      xAxis: {
-        type: "value", min: pad(lons)[0], max: pad(lons)[1],
-        name: "经度", nameTextStyle: { color: AXIS_COLOR, fontSize: 11 },
-        axisLabel: { color: AXIS_COLOR, fontSize: 10 }, splitLine: { lineStyle: { color: SPLIT_COLOR } },
-      },
-      yAxis: {
-        type: "value", min: pad(lats)[0], max: pad(lats)[1],
-        name: "纬度", nameTextStyle: { color: AXIS_COLOR, fontSize: 11 },
-        axisLabel: { color: AXIS_COLOR, fontSize: 10 }, splitLine: { lineStyle: { color: SPLIT_COLOR } },
-      },
-      series: [{
-        type: "scatter",
-        data: withCoords.map(a => ({
-          name: a.area, value: [a.lon, a.lat, a.count],
-          symbolSize: Math.min(16 + a.count * 3.2, 62),
-          label: { show: true, formatter: a.area + " " + a.count, position: "top", color: "#c6cfdf", fontSize: 12 },
-          itemStyle: { color: "rgba(244, 87, 77, .75)", borderColor: "#ffb4ae", borderWidth: 1 },
-        })),
-      }],
-    };
-    c.setOption(opt, true);
-  } else {
-    // 无坐标降级：横向条形图
-    $("area-chart-title").textContent = "区域分布";
-    const opt = baseOpt();
-    opt.xAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
-    opt.yAxis = { type: "category", data: areas.map(a => a.area).reverse(), axisLabel: { color: "#c6cfdf" }, axisTick: { show: false }, axisLine: { show: false } };
-    opt.series = [{
-      type: "bar", data: areas.map(a => a.count).reverse(), barWidth: 14,
-      itemStyle: { borderRadius: [0, 6, 6, 0], color: "#3d7eff" },
-      label: { show: true, position: "right", color: "#c6cfdf", fontSize: 12 },
-    }];
-    c.setOption(opt, true);
-  }
+  const opt = baseOpt();
+  opt.xAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
+  opt.yAxis = { type: "category", data: areas.map(a => a.area).reverse(), axisLabel: { color: "#c6cfdf" }, axisTick: { show: false }, axisLine: { show: false } };
+  opt.series = [{
+    type: "bar", data: areas.map(a => a.count).reverse(), barWidth: 14,
+    itemStyle: { borderRadius: [0, 6, 6, 0], color: "#3d7eff" },
+    label: { show: true, position: "right", color: "#c6cfdf", fontSize: 12 },
+  }];
+  c.setOption(opt, true);
 }
 window.addEventListener("resize", () => {
   if (state.trendChart) state.trendChart.resize();
   if (state.areaChart) state.areaChart.resize();
+  if (state.leafletMap) state.leafletMap.invalidateSize();
 });
 
 /* ================= 飞书推送 ================= */

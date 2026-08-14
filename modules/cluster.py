@@ -15,8 +15,10 @@
 目标不是数学上最优的聚类，而是稳定产出业务上可解释的事件。
 """
 import os
+import re
 
 import numpy as np
+import pandas as pd
 import jieba
 from sklearn.cluster import DBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -86,6 +88,46 @@ def _rule_group_labels(df):
             key_to_id[k] = len(key_to_id)
         labels.append(key_to_id[k])
     return np.array(labels)
+
+
+# 标题开头的部门/分类标签，如 “（城管）商业噪音” 中的 “（城管）”
+_TITLE_TAG_RE = re.compile(r"^[（(][^（）()]{1,15}[）)]\s*")
+# 标题开头的动作前缀，剥离后得到事件本体
+_TITLE_PREFIX_RE = re.compile(r"^(再次反映|继续反映|重复反映|反映|投诉|举报|咨询|求助)+\s*")
+
+
+def _clean_title_series(df):
+    """
+    产出用于分组的“清洗后标题”：
+    normalized_title → 去（部门）标签 → 去动作前缀 → 去空白。
+
+    真实数据的标题本身即人工归类的事件标签，是最可靠的分组键。
+    """
+    if "normalized_title" in df.columns:
+        titles = df["normalized_title"].fillna("").astype(str)
+    elif "title" in df.columns:
+        titles = df["title"].fillna("").astype(str)
+    else:
+        return pd.Series([""] * len(df), index=df.index)
+
+    cleaned = titles.str.strip()
+    cleaned = cleaned.str.replace(_TITLE_TAG_RE, "", regex=True)
+    cleaned = cleaned.str.replace(_TITLE_PREFIX_RE, "", regex=True)
+    cleaned = cleaned.str.strip()
+    return cleaned
+
+
+def _title_group_labels(df):
+    """
+    大数据路线：按清洗后标题分组（O(n) 线性，可承载十万级数据）。
+
+    标题为空的记为噪声 -1。返回 labels 数组。
+    """
+    cleaned = _clean_title_series(df)
+    codes, _uniques = pd.factorize(cleaned, sort=False)
+    labels = codes.copy()
+    labels[cleaned.values == ""] = -1
+    return labels.astype(int)
 
 
 def _consolidate(df, labels):
@@ -164,8 +206,33 @@ def cluster_orders(df, eps=None, min_samples=None, use_embedding=None):
     use_embedding = config.USE_EMBEDDING if use_embedding is None else use_embedding
 
     df = df.copy().reset_index(drop=True)
-    texts = _build_text(df).fillna("").tolist()
     info = {"fallback_used": False, "messages": []}
+
+    # ---- 规模分流：超大数据走标题规则分组（DBSCAN 距离矩阵 O(n²) 不可行） ----
+    max_rows = getattr(config, "CLUSTER_MAX_ROWS", 15000)
+    if len(df) > max_rows and ("title" in df.columns or "normalized_title" in df.columns):
+        labels = _title_group_labels(df)
+        # 标题即事件分类：词典事件为空的行用清洗后标题回填，保证下游事件类型有值
+        cleaned = _clean_title_series(df)
+        if "extracted_event" not in df.columns:
+            df["extracted_event"] = ""
+        ev_empty = df["extracted_event"].astype(str).str.strip() == ""
+        df.loc[ev_empty, "extracted_event"] = cleaned[ev_empty].values
+        valid = labels[labels != -1]
+        info.update({
+            "method": "标题规则分组（大数据路线）",
+            "fallback_used": False,
+            "n_clusters": len(set(valid.tolist())) if len(valid) else 0,
+            "coverage": float(len(valid) / len(labels)) if len(labels) else 0.0,
+            "noise_count": int((labels == -1).sum()),
+        })
+        info["messages"].append(
+            "数据量 %d 条超过聚类适用规模（%d），已自动切换标题规则分组路线。" % (
+                len(df), max_rows))
+        df["cluster_id"] = labels
+        return df, info
+
+    texts = _build_text(df).fillna("").tolist()
 
     labels = None
     method = "TF-IDF + 余弦距离 + DBSCAN"

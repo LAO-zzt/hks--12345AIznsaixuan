@@ -2,92 +2,106 @@
 """
 模块 3：实体与事件识别（entity_extractor.py）
 
-从 content + subject + area 中提取：
+从 content + title + subject + area 中提取：
 - extracted_subject：核心主体
 - extracted_event：核心事件
 - extracted_area：核心区域
 
 规则优先级：结构化字段 > 本地词典 > 后缀规则 > 正则 > 留空（不伪造）。
+全部采用向量化实现，十万级数据可在数十秒内完成。
 """
 import re
 
+import pandas as pd
+
 from utils.helpers import load_dict_lines
 
-# 区域后缀（顺德常见街道/镇，及通用行政单位）
-AREA_SUFFIX = ["街道", "镇", "乡", "村", "社区", "区"]
 # 主体后缀规则
 SUBJECT_SUFFIX = ["小区", "花园", "市场", "广场", "学校", "医院", "工业园", "公园",
                   "大厦", "商场", "步行街", "夜市", "烧烤店", "工地", "公寓", "苑",
-                  "路口", "路", "街", "大道"]
+                  "路口", "大道"]
+
+# 通用区域正则（词典未命中时的兜底）
+_GENERIC_AREA_RE = r"([\u4e00-\u9fa5]{1,4}(?:街道|镇))"
+# 主体后缀联合正则
+_SUBJECT_RE = re.compile(
+    r"([\u4e00-\u9fa5]{1,12}(?:" + "|".join(SUBJECT_SUFFIX) + r"))")
+
+_AREA_TERMS = None
+_AREA_DICT_RE = None
 
 
-def _match_area_from_text(text: str) -> str:
-    """从文本中用正则提取“XX街道 / XX镇”等区域。"""
-    if not text:
-        return ""
-    m = re.search(r"([\u4e00-\u9fa5]{1,4}(?:街道|镇))", text)
-    return m.group(1) if m else ""
+def _area_patterns():
+    """加载区域词典并编译联合正则（长词优先，缓存结果）。"""
+    global _AREA_TERMS, _AREA_DICT_RE
+    if _AREA_DICT_RE is None:
+        _AREA_TERMS = sorted(
+            [t for t in load_dict_lines("areas.txt") if t], key=len, reverse=True)
+        if _AREA_TERMS:
+            _AREA_DICT_RE = re.compile("(" + "|".join(map(re.escape, _AREA_TERMS)) + ")")
+        else:
+            _AREA_DICT_RE = False
+    return _AREA_DICT_RE
 
 
-def _match_event(text: str, event_terms: list) -> str:
-    """在文本中匹配事件词典，返回命中的最长事件词。"""
-    if not text:
-        return ""
-    hit = ""
-    for term in event_terms:
-        if term and term in text and len(term) > len(hit):
-            hit = term
-    return hit
+def _match_event_vec(texts: pd.Series, event_terms: list) -> pd.Series:
+    """
+    向量化事件词典匹配：长词优先，每条取首个命中的最长事件词。
+
+    返回与 texts 等长的 Series（未命中为空串）。
+    """
+    res = pd.Series([""] * len(texts), index=texts.index, dtype=object)
+    for term in sorted(event_terms, key=len, reverse=True):
+        if not term:
+            continue
+        mask = texts.str.contains(term, na=False) & (res == "")
+        if mask.any():
+            res[mask] = term
+    return res
 
 
-def _match_subject_from_text(text: str) -> str:
-    """用后缀规则从文本中提取主体（如“XX小区”）。"""
-    if not text:
-        return ""
-    best = ""
-    for suf in SUBJECT_SUFFIX:
-        # 匹配 1~12 个汉字 + 后缀
-        pattern = r"([\u4e00-\u9fa5]{1,12}" + re.escape(suf) + r")"
-        m = re.search(pattern, text)
-        if m and len(m.group(1)) > len(best):
-            best = m.group(1)
-    return best
+def _match_area_vec(texts: pd.Series) -> pd.Series:
+    """向量化区域提取：先区域词典，再通用“XX街道/XX镇”正则。"""
+    res = pd.Series([""] * len(texts), index=texts.index, dtype=object)
+    dict_re = _area_patterns()
+    if dict_re:
+        hit = texts.str.extract(dict_re)[0].fillna("")
+        res = hit
+    # 词典未命中的行走通用正则
+    miss = res == ""
+    if miss.any():
+        generic = texts[miss].str.extract(_GENERIC_AREA_RE)[0].fillna("")
+        res[miss] = generic.values
+    return res
 
 
 def extract_entities(df):
     """
-    为每条工单提取主体/事件/区域三列。
+    为每条工单提取主体/事件/区域三列（向量化，支持十万级数据）。
 
     遵循“无法判断时留空，不得伪造”的原则。
     """
     event_terms = load_dict_lines("events.txt")
-
-    subjects, events, areas = [], [], []
-    for _, row in df.iterrows():
-        content = str(row.get("normalized_content", "") or row.get("content", ""))
-        raw_subject = str(row.get("subject", "") or "").strip()
-        raw_area = str(row.get("area", "") or "").strip()
-
-        # ---- 主体 ----
-        if raw_subject:
-            subj = raw_subject
-        else:
-            subj = _match_subject_from_text(content)
-        subjects.append(subj)
-
-        # ---- 事件 ----
-        ev = _match_event(content, event_terms)
-        events.append(ev)
-
-        # ---- 区域 ----
-        if raw_area:
-            ar = raw_area
-        else:
-            ar = _match_area_from_text(content)
-        areas.append(ar)
-
     df = df.copy()
-    df["extracted_subject"] = subjects
-    df["extracted_event"] = events
-    df["extracted_area"] = areas
+
+    content = df.get("normalized_content", df.get("content", pd.Series([""] * len(df), index=df.index))).fillna("").astype(str)
+    title = df.get("normalized_title", df.get("title", pd.Series([""] * len(df), index=df.index))).fillna("").astype(str)
+
+    # ---- 主体：结构化字段优先，其次后缀规则（向量化） ----
+    raw_subject = df.get("subject", pd.Series([""] * len(df), index=df.index)).fillna("").astype(str).str.strip()
+    subj_from_text = content.str.extract(_SUBJECT_RE)[0].fillna("")
+    df["extracted_subject"] = raw_subject.where(raw_subject != "", subj_from_text)
+
+    # ---- 事件：词典匹配（标题优先，其次内容） ----
+    ev_from_title = _match_event_vec(title, event_terms)
+    ev_from_content = _match_event_vec(content, event_terms)
+    df["extracted_event"] = ev_from_title.where(ev_from_title != "", ev_from_content)
+
+    # ---- 区域：结构化字段优先，其次内容抽取，最后标题抽取 ----
+    raw_area = df.get("area", pd.Series([""] * len(df), index=df.index)).fillna("").astype(str).str.strip()
+    area_from_content = _match_area_vec(content)
+    area_from_title = _match_area_vec(title)
+    area = area_from_content.where(area_from_content != "", area_from_title)
+    df["extracted_area"] = raw_area.where(raw_area != "", area)
+
     return df

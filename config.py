@@ -30,6 +30,15 @@ CLUSTER_EPS = 0.5          # 邻域半径（余弦距离）
 CLUSTER_MIN_SAMPLES = 2    # 核心点最少样本数
 FALLBACK_RULE_GROUP = True # 聚类异常时是否回退规则分组
 CONSOLIDATE_BY_RULES = True # 聚类后按规则归并碎片簇、回收同签名噪声点
+# 数据量超过该阈值时不跑 DBSCAN（距离矩阵 O(n²) 内存不可行），
+# 自动切换“标题规则分组”大数据路线
+CLUSTER_MAX_ROWS = 15000
+
+# ---------------- 展示规模上限（超大数据防卡顿） ----------------
+MAX_DISPLAY_EVENTS = 100   # 看板最多展示事件数（按优先级取 Top）
+MAX_PROFILE_EVENTS = 500   # 事件画像/风险/建议最多处理的簇数（按频次取 Top）
+MAX_DISPLAY_ORDERS = 2000  # 前端明细表最多展示工单数
+MAX_EXPORT_ORDERS = 20000  # Excel 明细 Sheet 最多导出行数（CSV 不限）
 # 拼接聚类文本时实体字段的加权重复次数（强化结构化信号，
 # 事件权重最高：保证“同事件不同主体/表述”能聚到一起）
 TEXT_WEIGHT_SUBJECT = 1

@@ -47,9 +47,13 @@ def normalize_orders(df):
     """
     对整个工单 DataFrame 增加 normalized_content 字段。
 
-    原始 content 字段保持不变，保证可追溯。
+    若存在 title 列（真实数据常见），同步产出 normalized_title，
+    供大数据“标题规则分组”路线使用。
+    原始 content/title 字段保持不变，保证可追溯。
     """
     syn_map = load_synonyms()
     df = df.copy()
     df["normalized_content"] = df["content"].apply(lambda x: normalize_text(x, syn_map))
+    if "title" in df.columns:
+        df["normalized_title"] = df["title"].apply(lambda x: normalize_text(x, syn_map))
     return df

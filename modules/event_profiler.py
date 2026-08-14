@@ -66,22 +66,32 @@ def _compute_trend(times: pd.Series, ref_now: pd.Timestamp):
     return "平稳"
 
 
-def build_event_profiles(df, ref_now=None):
+def build_event_profiles(df, ref_now=None, max_events=None):
     """
     将多频聚类转换为事件对象列表（按频次降序）。
 
     ref_now：趋势计算的时间基准，默认取数据集最近一条工单的时间。
+    max_events：最多画像事件数（默认取 config.MAX_PROFILE_EVENTS），
+    超大数据下仅处理频次最高的 Top N 簇，保证流水线时效。
     """
     multi = df[df["is_multi_freq"]]
     if multi.empty:
         return []
 
+    if max_events is None:
+        max_events = getattr(config, "MAX_PROFILE_EVENTS", 500)
+
     if ref_now is None:
         valid_times = df["submit_time"].dropna()
         ref_now = valid_times.max() if not valid_times.empty else pd.Timestamp.now()
 
+    grouped = multi.groupby("cluster_id")
+    # 频次降序取 Top N 簇
+    top_ids = grouped.size().sort_values(ascending=False).head(max_events).index
+
     events = []
-    for idx, (cid, g) in enumerate(multi.groupby("cluster_id"), start=1):
+    for idx, cid in enumerate(top_ids, start=1):
+        g = grouped.get_group(cid)
         times = g["submit_time"]
         times_valid = times.dropna()
 
