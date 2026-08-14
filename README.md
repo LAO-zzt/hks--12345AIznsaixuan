@@ -10,10 +10,23 @@
 
 ```bash
 pip install -r requirements.txt
-streamlit run main.py
 ```
 
-现场演示只需三步：打开页面 → 点击"开始分析"（自动加载内置样例，也可上传 CSV）→ 查看看板并下载结果。默认路径完全离线，无需联网。
+**自研 Web 版（主推，深色预警大屏风格）：**
+
+```bash
+python webapp/server.py
+# 打开 http://127.0.0.1:8600
+```
+
+**Streamlit 版（备用）：**
+
+```bash
+streamlit run main.py
+# 打开 http://localhost:8501
+```
+
+两套前端共用同一套 modules/ 业务流水线，识别结果完全一致。现场演示只需三步：打开页面 → 点击"开始分析"（自动加载内置样例，也可上传 CSV）→ 查看看板并下载结果。默认路径完全离线（ECharts 已本地化，无需联网）。
 
 ## 核心链路
 
@@ -39,7 +52,12 @@ CSV 上传 → loader 加载/清洗/去重 → normalizer 标准化/同义词归
 ## 目录结构
 
 ```text
-├── main.py                  # Streamlit 入口（管理看板）
+├── main.py                  # Streamlit 入口（备用演示）
+├── webapp/
+│   ├── server.py            # FastAPI 服务（自研 Web 版 API 层）
+│   └── static/
+│       ├── index.html       # 自研前端（深色预警大屏，单文件）
+│       └── vendor/echarts.min.js  # ECharts 本地化（离线可用）
 ├── config.py                # 全局配置（阈值/权重/路径集中管理）
 ├── requirements.txt
 ├── smoke_test.py            # 无头全链路验证
@@ -47,7 +65,7 @@ CSV 上传 → loader 加载/清洗/去重 → normalizer 标准化/同义词归
 ├── test_robustness.py       # 容错验收测试（11 项）
 ├── data/
 │   ├── input/sample.csv     # 内置样例（37 条，覆盖 5 类高频事件场景）
-│   ├── dicts/               # 同义词/主体/事件/敏感事件词典
+│   ├── dicts/               # 同义词/主体/事件/敏感事件/区域坐标词典
 │   └── output/              # 导出结果（运行时生成）
 ├── modules/                 # 10 个核心流水线模块
 └── utils/helpers.py         # 词典加载等工具
@@ -64,4 +82,4 @@ priority_score = 频次分×0.35 + 趋势分×0.30 + 空间集中度分×0.15 + 
 
 ## 飞书推送（可选）
 
-页面侧边栏可填入飞书群机器人 Webhook，一键推送 Top5 高关注事件；也可通过环境变量 `FEISHU_WEBHOOK` 注入。代码中不写死任何真实密钥。
+在页面①"第三步"填入飞书群机器人 Webhook，分析完成后可一键推送 Top5 高关注事件；也可通过环境变量 `FEISHU_WEBHOOK` 注入。代码中不写死任何真实密钥。

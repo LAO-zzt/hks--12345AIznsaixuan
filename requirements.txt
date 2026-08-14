@@ -5,3 +5,6 @@ pandas
 plotly
 openpyxl
 requests
+fastapi
+uvicorn
+python-multipart
