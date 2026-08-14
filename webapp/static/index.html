@@ -159,6 +159,28 @@
   .board-scroll { max-height: 430px; overflow-y: auto; }
   .h-note { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 10px; }
 
+  .board-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tool-input, .tool-select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 13px; padding: 7px 12px;
+  }
+  .tool-input { width: 220px; }
+  .tool-select { min-width: 130px; }
+
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th.sortable::after { content: " ⇅"; opacity: .45; font-size: 11px; }
+  th.sortable.asc::after { content: " ↑"; opacity: 1; color: var(--accent); }
+  th.sortable.desc::after { content: " ↓"; opacity: 1; color: var(--accent); }
+
+  .presets { float: right; display: inline-flex; gap: 8px; }
+  .preset-btn {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+    font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--text); }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th {
     text-align: left; color: var(--muted); font-weight: 600; font-size: 12px;
@@ -294,7 +316,13 @@
       </div>
 
       <div class="card params-card">
-        <h2>② 识别参数</h2>
+        <h2>② 识别参数
+          <span class="presets">
+            <button class="preset-btn" data-preset="default" title="阈值3 · 全量分析">默认</button>
+            <button class="preset-btn" data-preset="sensitive" title="阈值2 · 近30天，捕捉升温事件">高敏·近30天</button>
+            <button class="preset-btn" data-preset="strict" title="阈值5 · 全量，只保留头部事件">严格</button>
+          </span>
+        </h2>
         <div class="param-row">
           <label>多频阈值 FREQ_THRESHOLD <b id="v-freq">3</b></label>
           <input type="range" id="p-freq" min="2" max="15" value="3">
@@ -345,13 +373,31 @@
     <div class="kpi-row" id="kpi-row"></div>
 
     <div class="card" style="margin-bottom:20px">
-      <h2>高频事件看板<span class="h-note">点击任意一行查看事件详情</span></h2>
+      <h2>高频事件看板<span class="h-note">点击表头排序 · 点击行查看详情</span></h2>
+      <div class="board-tools">
+        <input class="tool-input" id="f-q" placeholder="搜索事件名称 / 编号…">
+        <select class="tool-select" id="f-area"><option value="">全部区域</option></select>
+        <select class="tool-select" id="f-level">
+          <option value="">全部风险等级</option>
+          <option value="高关注">高关注</option>
+          <option value="中关注">中关注</option>
+          <option value="一般">一般</option>
+          <option value="需人工研判">需人工研判</option>
+        </select>
+        <span class="h-note" id="board-count"></span>
+      </div>
       <div class="board-scroll">
         <table class="clickable" id="event-table">
           <thead>
             <tr>
-              <th>编号</th><th>事件</th><th>区域</th><th>频次</th>
-              <th>近7天</th><th>趋势</th><th>风险等级</th><th>优先级</th>
+              <th data-key="event_id" class="sortable">编号</th>
+              <th data-key="name" class="sortable">事件</th>
+              <th data-key="area" class="sortable">区域</th>
+              <th data-key="frequency" class="sortable">频次</th>
+              <th data-key="last_7d" class="sortable">近7天</th>
+              <th data-key="trend" class="sortable">趋势</th>
+              <th data-key="risk_level" class="sortable">风险等级</th>
+              <th data-key="priority_score" class="sortable">优先级</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -394,7 +440,7 @@
     </div>
 
     <div class="card">
-      <h2>完整工单表</h2>
+      <h2>完整工单表<span class="h-note">无确切时分的数据仅显示日期（由工单编号解析）</span></h2>
       <div class="table-scroll">
         <table id="orders-table">
           <thead>
@@ -551,27 +597,15 @@ function renderResults() {
     kpiCard(k.high_events, "高关注事件", "建议优先处置", "k-red") +
     kpiCard(k.biggest_event, "最大频次事件", "涉及工单最多", "k-amber", true);
 
-  // 事件看板（主体缺失/占位时只显示事件类型，适配真实数据）
-  $("event-table").querySelector("tbody").innerHTML = p.events.map((e, i) => {
-    const noSubject = !e.subject || e.subject.startsWith("（") || e.subject.startsWith("多主体聚合");
-    const name = noSubject ? e.type : e.subject;
-    const sub = noSubject
-      ? (e.area && !e.area.startsWith("（") ? e.area : "")
-      : (e.type + (e.area && !e.area.startsWith("（") ? " · " + e.area : ""));
-    return '<tr data-i="' + i + '">' +
-    "<td>" + esc(e.event_id) + "</td>" +
-    '<td><div class="ev-name">' + esc(name) + "</div>" +
-    '<div class="ev-sub">' + esc(sub) + "</div></td>" +
-    "<td>" + esc(e.area) + "</td>" +
-    "<td><b>" + e.frequency + "</b></td>" +
-    "<td>" + e.last_7d + "</td>" +
-    "<td>" + trendSpan(e.trend) + "</td>" +
-    "<td>" + riskBadge(e.risk_level) + "</td>" +
-    "<td>" + Number(e.priority_score || 0).toFixed(1) + "</td>" +
-    "</tr>";
-  }).join("");
-  $("event-table").querySelectorAll("tbody tr").forEach(tr =>
-    tr.addEventListener("click", () => selectEvent(+tr.dataset.i)));
+  // 事件看板：填充区域筛选选项，渲染表格（排序/筛选由 renderBoard 处理）
+  const areaSel = $("f-area");
+  areaSel.innerHTML = '<option value="">全部区域</option>';
+  [...new Set(p.events.map(e => e.area))].filter(a => a && !a.startsWith("（")).sort().forEach(a => {
+    const o = document.createElement("option");
+    o.value = a; o.textContent = a;
+    areaSel.appendChild(o);
+  });
+  renderBoard();
 
   // 完整工单表（带 data-oid 供典型工单溯源定位）
   $("orders-table").querySelector("tbody").innerHTML = p.orders.map(o =>
@@ -590,6 +624,118 @@ function renderResults() {
   $("detail-empty").classList.remove("hidden");
   if (p.events.length) selectEvent(0);
 }
+
+/* ================= 看板排序与筛选 ================= */
+const state2 = { sortKey: "", sortDir: 1 };   // 空 sortKey = 默认口径（风险等级→频次）
+const LEVEL_RANK = { "高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3 };
+const TREND_RANK = { "上升": 0, "平稳": 1, "无法判断": 2, "下降": 3 };
+
+function boardView() {
+  const p = state.payload;
+  const q = ($("f-q").value || "").trim().toLowerCase();
+  const fa = $("f-area").value, fl = $("f-level").value;
+  let rows = p.events.map((e, i) => ({ e, i }));
+  if (fa) rows = rows.filter(r => r.e.area === fa);
+  if (fl) rows = rows.filter(r => r.e.risk_level === fl);
+  if (q) rows = rows.filter(r =>
+    (r.e.type || "").toLowerCase().includes(q) ||
+    (r.e.subject || "").toLowerCase().includes(q) ||
+    (r.e.event_id || "").toLowerCase().includes(q));
+
+  if (!state2.sortKey) {
+    // 默认口径：风险等级 → 频次降序
+    rows.sort((a, b) =>
+      (LEVEL_RANK[a.e.risk_level] ?? 9) - (LEVEL_RANK[b.e.risk_level] ?? 9) ||
+      b.e.frequency - a.e.frequency);
+  } else {
+    const k = state2.sortKey, dir = state2.sortDir;
+    const val = (e) => {
+      if (k === "name") return (e.subject.startsWith("（") || e.subject.startsWith("多主体聚合") ? e.type : e.subject) || "";
+      if (k === "risk_level") return LEVEL_RANK[e.risk_level] ?? 9;
+      if (k === "trend") return TREND_RANK[e.trend] ?? 9;
+      if (k === "priority_score") return Number(e.priority_score || 0);
+      return e[k] ?? "";
+    };
+    rows.sort((a, b) => {
+      const va = val(a.e), vb = val(b.e);
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), "zh") * dir;
+    });
+  }
+  return rows;
+}
+
+function renderBoard() {
+  const rows = boardView();
+  $("board-count").textContent = "共 " + rows.length + " 个事件";
+  $("event-table").querySelector("tbody").innerHTML = rows.map(r => {
+    const e = r.e;
+    const noSubject = !e.subject || e.subject.startsWith("（") || e.subject.startsWith("多主体聚合");
+    const name = noSubject ? e.type : e.subject;
+    const sub = noSubject
+      ? (e.area && !e.area.startsWith("（") ? e.area : "")
+      : (e.type + (e.area && !e.area.startsWith("（") ? " · " + e.area : ""));
+    return '<tr data-i="' + r.i + '">' +
+      "<td>" + esc(e.event_id) + "</td>" +
+      '<td><div class="ev-name">' + esc(name) + "</div>" +
+      '<div class="ev-sub">' + esc(sub) + "</div></td>" +
+      "<td>" + esc(e.area) + "</td>" +
+      "<td><b>" + e.frequency + "</b></td>" +
+      "<td>" + e.last_7d + "</td>" +
+      "<td>" + trendSpan(e.trend) + "</td>" +
+      "<td>" + riskBadge(e.risk_level) + "</td>" +
+      "<td>" + Number(e.priority_score || 0).toFixed(1) + "</td>" +
+      "</tr>";
+  }).join("");
+  $("event-table").querySelectorAll("tbody tr").forEach(tr =>
+    tr.addEventListener("click", () => selectEvent(+tr.dataset.i)));
+  // 表头排序指示
+  $("event-table").querySelectorAll("th.sortable").forEach(th => {
+    th.classList.remove("asc", "desc");
+    if (th.dataset.key === state2.sortKey)
+      th.classList.add(state2.sortDir === 1 ? "asc" : "desc");
+  });
+  // 恢复行选中态
+  if (state.selected >= 0) {
+    $("event-table").querySelectorAll("tbody tr").forEach(tr =>
+      tr.classList.toggle("sel", +tr.dataset.i === state.selected));
+  }
+}
+
+document.querySelectorAll("#event-table th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.key;
+    if (state2.sortKey === k) {
+      state2.sortDir *= -1;
+    } else {
+      state2.sortKey = k;
+      // 数值/排序型字段默认降序更直观，文本默认升序
+      state2.sortDir = ["frequency", "last_7d", "priority_score"].includes(k) ? -1 : 1;
+    }
+    renderBoard();
+  });
+});
+$("f-q").addEventListener("input", renderBoard);
+$("f-area").addEventListener("change", renderBoard);
+$("f-level").addEventListener("change", renderBoard);
+
+/* ================= 预设参数 ================= */
+const PRESETS = {
+  default:   { freq: 3, scope: "all" },
+  sensitive: { freq: 2, scope: "d30" },
+  strict:    { freq: 5, scope: "all" },
+};
+document.querySelectorAll(".preset-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const p = PRESETS[btn.dataset.preset];
+    if (!p) return;
+    $("p-freq").value = p.freq;
+    $("v-freq").textContent = p.freq;
+    const radio = document.querySelector('input[name="scope"][value="' + p.scope + '"]');
+    if (radio) radio.checked = true;
+    toast("已套用预设：" + btn.textContent + "（点开始分析生效）");
+  });
+});
 
 function kpiCard(val, lbl, sub, cls, isText) {
   return '<div class="kpi ' + cls + '">' +

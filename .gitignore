@@ -22,6 +22,7 @@ models/
 # 环境与密钥
 .env
 *.log
+webapp/secrets.json
 
 # IDE
 .idea/

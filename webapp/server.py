@@ -71,13 +71,28 @@ def _save_result_cache(key: str, data: dict):
         pass
 
 
+def _load_local_secret(name: str) -> str:
+    """读取本地密钥文件 webapp/secrets.json（已 gitignore，绝不入库）。"""
+    try:
+        with open(os.path.join(WEB_DIR, "secrets.json"), "r", encoding="utf-8") as f:
+            import json as _json
+            return str(_json.load(f).get(name, "") or "").strip()
+    except Exception:
+        return ""
+
+
 # ============================ 工具函数 ============================
 
 def _fmt_time(ts) -> str:
-    """时间戳转展示字符串；NaT/异常返回空串，不抛错。"""
+    """
+    时间戳转展示字符串；NaT/异常返回空串，不抛错。
+    仅有日期（午夜零点，通常由工单编号解析）时只显示日期，不伪造时分。
+    """
     try:
         if pd.isna(ts):
             return ""
+        if ts.hour == 0 and ts.minute == 0:
+            return ts.strftime("%Y-%m-%d")
         return ts.strftime("%Y-%m-%d %H:%M")
     except Exception:
         return ""
@@ -315,7 +330,9 @@ async def analyze(
         # ---- LLM 建议增强：规则词典未命中的事件交给 DeepSeek 兜底 ----
         if use_llm and events:
             from modules import llm_advisor
-            api_key = (llm_key or "").strip() or os.environ.get("DEEPSEEK_API_KEY", "")
+            api_key = ((llm_key or "").strip()
+                       or os.environ.get("DEEPSEEK_API_KEY", "")
+                       or _load_local_secret("deepseek_api_key"))
             if not api_key:
                 warnings.append("已开启 LLM 建议增强，但未检测到 DeepSeek API Key"
                                 "（页面参数区粘贴或设环境变量 DEEPSEEK_API_KEY），本次用规则词典结果。")

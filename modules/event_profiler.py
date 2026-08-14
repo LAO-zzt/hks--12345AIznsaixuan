@@ -66,6 +66,13 @@ def _compute_trend(times: pd.Series, ref_now: pd.Timestamp):
     return "平稳"
 
 
+def _fmt_seen(ts) -> str:
+    """首末出现时间展示：仅日期（午夜，来自工单编号解析）时不伪造时分。"""
+    if ts.hour == 0 and ts.minute == 0:
+        return ts.strftime("%Y-%m-%d")
+    return ts.strftime("%Y-%m-%d %H:%M")
+
+
 def build_event_profiles(df, ref_now=None, max_events=None):
     """
     将多频聚类转换为事件对象列表（按频次降序）。
@@ -120,8 +127,8 @@ def build_event_profiles(df, ref_now=None, max_events=None):
             "event_type": _mode_or_blank(g.get("extracted_event", pd.Series())) or "（未识别类型）",
             "area": _mode_or_blank(g.get("extracted_area", pd.Series())) or "（未识别区域）",
             "frequency": int(len(g)),
-            "first_seen": times_valid.min().strftime("%Y-%m-%d %H:%M") if not times_valid.empty else "未知",
-            "last_seen": times_valid.max().strftime("%Y-%m-%d %H:%M") if not times_valid.empty else "未知",
+            "first_seen": _fmt_seen(times_valid.min()) if not times_valid.empty else "未知",
+            "last_seen": _fmt_seen(times_valid.max()) if not times_valid.empty else "未知",
             "last_24h": last_24h,
             "last_7d": last_7d,
             "area_count": int(g["extracted_area"].replace("", pd.NA).dropna().nunique()),
