@@ -172,98 +172,12 @@ def _semantic_matrix(df):
     return matrix
 
 
-# 同址重复工单标记缓存（口径与详情页关联工单 _is_same_place 完全一致）
-_DUP = {"df_id": None, "mask": None}
-
-
-def _dup_same_place_mask(df):
-    """标记每条工单在簇内是否存在“同地点”关联工单。
-
-    分桶剪枝：簇内按候选键（归一化地址/社区+楼栋/社区/楼栋/主体+镇街/地址全空）分桶，
-    仅桶内两两判定，避免全量 O(n²)；全空桶用语义矩阵批量算相似度。
-    """
-    if _DUP["df_id"] == id(df):
-        return _DUP["mask"]
-    mask = pd.Series(False, index=df.index)
-    try:
-        pos_map = {str(v): i for i, v in enumerate(df["order_id"].astype(str))}
-        sub = df[df["cluster_id"] != -1]
-        for _, g in sub.groupby("cluster_id"):
-            rows = [{
-                "idx": idx,
-                "oid": str(v.get("order_id", "")),
-                "addr": str(v.get("addr_norm", "") or ""),
-                "comm": str(v.get("addr_community", "") or ""),
-                "bld": str(v.get("addr_building", "") or ""),
-                "subj": str(v.get("extracted_subject", "") or ""),
-                "area": str(v.get("extracted_area", "") or ""),
-            } for idx, v in g.iterrows()]
-            buckets = {}
-            for i, r in enumerate(rows):
-                keys = []
-                if r["addr"]:
-                    keys.append(("a", r["addr"]))
-                    if r["comm"]:
-                        keys.append(("c", r["comm"]))
-                if r["comm"] and r["bld"]:
-                    keys.append(("cb", r["comm"], r["bld"]))
-                if not r["comm"] and r["bld"]:
-                    keys.append(("b", r["bld"]))
-                if _norm_subject(r["subj"]):
-                    keys.append(("s", r["subj"], r["area"]))
-                if not r["addr"] and not r["comm"] and not r["bld"]:
-                    keys.append(("e",))
-                for k in keys:
-                    buckets.setdefault(k, []).append(i)
-            for k, members in buckets.items():
-                if len(members) < 2:
-                    continue
-                if k[0] == "e":
-                    _dup_mark_semantic(df, rows, members, pos_map, mask)
-                else:
-                    for x in range(len(members)):
-                        for y in range(x + 1, len(members)):
-                            if _is_same_place(rows[members[x]], rows[members[y]]):
-                                mask.loc[rows[members[x]]["idx"]] = True
-                                mask.loc[rows[members[y]]["idx"]] = True
-    except Exception:
-        pass
-    _DUP.update(df_id=id(df), mask=mask)
-    return mask
-
-
-def _dup_mark_semantic(df, rows, members, pos_map, mask):
-    """地址全空桶：TF-IDF+SVD 向量分块批量算相似度，≥0.65 即互为同址重复。"""
-    sem = _semantic_matrix(df)
-    if sem is None:
-        return
-    vecs, oids = [], []
-    for i in members:
-        p = pos_map.get(rows[i]["oid"])
-        if p is not None:
-            vecs.append(sem[p])
-            oids.append(i)
-    if len(vecs) < 2:
-        return
-    import numpy as np
-    m = np.vstack(vecs)
-    n = len(oids)
-    chunk = 1024
-    for st in range(0, n, chunk):
-        sims = m[st:st + chunk] @ m.T
-        hits = sims >= 0.65
-        for ci in range(hits.shape[0]):
-            hits[ci, st + ci] = False
-            if hits[ci].any():
-                mask.loc[rows[oids[st + ci]]["idx"]] = True
-
-
 # 跨簇同址候选桶索引（详情页关联工单用：同地址的不同事件工单也算同址重复）
 _GIDX = {"df_id": None, "buckets": None}
 
 
 def _addr_bucket_keys(addr, comm, bld, subj, area):
-    """统一桶键生成（与 _dup_same_place_mask 口径一致，跨簇不带簇维度）。"""
+    """统一桶键生成（详情页关联工单候选，跨簇不带簇维度）。"""
     keys = []
     subj = _norm_subject(subj)
     if addr:
@@ -307,23 +221,38 @@ def _result_cache_key(*parts) -> str:
 
 
 def _load_result_cache(key: str):
-    """读取结果缓存；缺失或损坏返回 None。"""
+    """读取结果缓存；缺失/损坏（含0字节）自动删除坏文件并返回 None。"""
     path = os.path.join(RESULT_CACHE_DIR, "result_%s.pkl" % key)
     if not os.path.exists(path):
         return None
     try:
-        return pd.read_pickle(path)
+        data = pd.read_pickle(path)
+        if not isinstance(data, dict) or data.get("df") is None:
+            raise ValueError("invalid cache payload")
+        return data
     except Exception:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
         return None
 
 
 def _save_result_cache(key: str, data: dict):
-    """保存结果缓存；失败不影响主流程。"""
+    """保存结果缓存（原子写入：先写 .tmp 再替换，避免中断留下 0 字节坏缓存）。"""
+    tmp = None
     try:
         os.makedirs(RESULT_CACHE_DIR, exist_ok=True)
-        pd.to_pickle(data, os.path.join(RESULT_CACHE_DIR, "result_%s.pkl" % key))
+        path = os.path.join(RESULT_CACHE_DIR, "result_%s.pkl" % key)
+        tmp = path + ".tmp"
+        pd.to_pickle(data, tmp)
+        os.replace(tmp, path)
     except Exception:
-        pass
+        if tmp and os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 # ============================ 重启恢复（开发模式：免每次重跑分析） ============================
@@ -344,13 +273,17 @@ def _restore_latest_cache():
                      if f.startswith("result_") and f.endswith(".pkl")]
             if not files:
                 return False
-            latest = max(files, key=lambda f: os.path.getmtime(os.path.join(RESULT_CACHE_DIR, f)))
-            data = _load_result_cache(latest[len("result_"):-len(".pkl")])
-            if not data or data.get("df") is None:
-                return False
-            STATE["df"], STATE["events"] = data["df"], data.get("events", [])
-            STATE["info"] = data.get("info", {}) or {}
-            return True
+            # 坏缓存会被 _load_result_cache 自愈删除；优先恢复数据量最大的缓存（开发模式主数据集），同大小取较新
+            files.sort(key=lambda f: (os.path.getsize(os.path.join(RESULT_CACHE_DIR, f)),
+                                      os.path.getmtime(os.path.join(RESULT_CACHE_DIR, f))), reverse=True)
+            for name in files:
+                data = _load_result_cache(name[len("result_"):-len(".pkl")])
+                if data is None:
+                    continue
+                STATE["df"], STATE["events"] = data["df"], data.get("events", [])
+                STATE["info"] = data.get("info", {}) or {}
+                return True
+            return False
         except Exception:
             return False
 
@@ -548,7 +481,6 @@ def clear_cache():
         return {"ok": False, "error": "清理失败：%s" % e}
     STATE.update(df=None, events=None, source_meta=None, info={})
     _SEM.update(df_id=None, matrix=None)
-    _DUP.update(df_id=None, mask=None)
     _GIDX.update(df_id=None, buckets=None)
     return {"ok": True, "removed": removed}
 
@@ -608,15 +540,21 @@ def _stage_end(error=""):
 @app.get("/api/status")
 def pipeline_status():
     """后台流水线实时状态（前端弹层轮询）。"""
+    stages = _PIPELINE["stages"]
+    restored = (not stages) and (STATE["df"] is not None)
+    if restored:
+        stages = [{"key": "restore", "name": "本地缓存恢复（服务重启免重跑）",
+                   "status": "done", "ms": None}]
     return {
         "ok": True,
         "running": _PIPELINE["running"],
         "finished": _PIPELINE["finished"],
         "source": _PIPELINE["source"],
         "error": _PIPELINE["error"],
+        "restored": restored,
         "elapsed_ms": (int((_time.time() - _PIPELINE["t_start"]) * 1000)
                        if _PIPELINE["t_start"] else 0),
-        "stages": _PIPELINE["stages"],
+        "stages": stages,
         "has_result": STATE["df"] is not None,
     }
 
@@ -814,13 +752,12 @@ async def analyze(
         cache_key = None
         if cache_seed:
             cache_key = _result_cache_key(
-                cache_seed + "|tcm1.1", scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
+                cache_seed + "|tcm1.2", scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
             cached = _load_result_cache(cache_key)
             if cached is not None:
                 STATE["df"], STATE["events"] = cached["df"], cached["events"]
                 STATE["info"] = cached.get("info", {}) or {}
                 _SEM.update(df_id=None, matrix=None)
-                _DUP.update(df_id=None, mask=None)
                 _GIDX.update(df_id=None, buckets=None)
                 warnings.append("已命中分析缓存，结果与上次相同参数分析一致。")
                 _stage_end("命中分析缓存，秒级返回")
@@ -858,7 +795,6 @@ async def analyze(
         _stage_set("finish")
         STATE["df"], STATE["events"], STATE["info"] = df, events, info
         _SEM.update(df_id=None, matrix=None)
-        _DUP.update(df_id=None, mask=None)
         _GIDX.update(df_id=None, buckets=None)
         if cache_key:
             _save_result_cache(cache_key, {"df": df, "events": events, "info": info})
@@ -1002,7 +938,6 @@ def overview():
         "daily_all": daily_all,
         "daily_by_area": daily_by_area,
         "multi_orders": int(multi_mask.sum()),
-        "dup_orders": int(_dup_same_place_mask(df).sum()),
         "subjects": _top_subjects(df, 30),
         "top_subjects": _top_subjects(df, 30),
         "categories": _top_categories(df, 30),
@@ -1036,7 +971,7 @@ def _top_categories(df, top_n=30):
 @app.get("/api/orders")
 def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
            subject: str = "", multi: str = "", category: str = "",
-           event: str = "", sort: str = "default", dup: str = ""):
+           event: str = "", sort: str = "default"):
     """工单工作台：全量工单搜索 / 筛选 / 排序 / 分页（服务端处理，支撑十万级数据）。"""
     df = STATE["df"]
     if df is None:
@@ -1057,9 +992,6 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
         view = view[view.get("extracted_subject", pd.Series(index=view.index)).astype(str) == subject]
     if multi in ("1", "0"):
         view = view[view["is_multi_freq"].astype(bool) == (multi == "1")]
-    if dup == "1":
-        dm = _dup_same_place_mask(df)
-        view = view[dm.loc[view.index].astype(bool)]
     if category:
         view = view[view.get("extracted_event", pd.Series(index=view.index)).astype(str) == category]
     if event:
@@ -1203,7 +1135,7 @@ def order_detail(oid: str):
                 similar.append({
                     "event_id": e2["event_id"], "area": e2.get("area", ""),
                     "frequency": e2["frequency"],
-                    "reason": "事件类型同为“%s”，但区域/主体不同，判定不属于同一事件" % ev.get("event_type", ""),
+                    "reason": "事件类型同为“%s”，但区域/主体不同，判定不属于同一工单" % ev.get("event_type", ""),
                 })
             if len(similar) >= 3:
                 break

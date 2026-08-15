@@ -194,6 +194,41 @@ def _consolidate(df, labels):
     return labels, notes
 
 
+def _merge_by_signature(df, labels):
+    """
+    签名归并：簇代表（事件类型众数+区域众数）相同的簇合并为同一事件。
+
+    业务口径：同区域+同问题类型 = 同一多频事件（如「拖欠工资」与「拖欠工资问题」标题
+    仅差通用后缀，属同一事件，频次合并计数）。关键字段全空的簇不参与归并。
+    """
+    labels = labels.copy()
+
+    def mode_of(cid, field):
+        if field not in df.columns:
+            return ""
+        vals = df.loc[labels == cid, field].astype(str).str.strip()
+        vals = vals[vals != ""]
+        return vals.mode().iloc[0] if not vals.empty else ""
+
+    ids = sorted(set(labels.tolist()) - {-1})
+    sig_first, remap = {}, {}
+    for cid in ids:
+        sig = (mode_of(cid, "extracted_event"), mode_of(cid, "extracted_area"))
+        if not sig[0] and not sig[1]:
+            remap[cid] = cid
+            continue
+        if sig in sig_first:
+            remap[cid] = sig_first[sig]
+        else:
+            sig_first[sig] = cid
+            remap[cid] = cid
+    n_merged = sum(1 for c, t in remap.items() if t != c)
+    for cid in ids:
+        if remap[cid] != cid:
+            labels[labels == cid] = remap[cid]
+    return labels, n_merged
+
+
 def cluster_orders(df, eps=None, min_samples=None, use_embedding=None):
     """
     对工单进行聚类，返回 (df_含cluster_id, info字典)。
@@ -229,6 +264,13 @@ def cluster_orders(df, eps=None, min_samples=None, use_embedding=None):
         info["messages"].append(
             "数据量 %d 条超过聚类适用规模（%d），已自动切换标题规则分组路线。" % (
                 len(df), max_rows))
+        if getattr(config, "MERGE_BY_SIGNATURE", True):
+            labels, n_merged = _merge_by_signature(df, labels)
+            if n_merged:
+                info["messages"].append(
+                    "签名归并：同区域同事件类型的簇已合并（归并 %d 个簇）。" % n_merged)
+                valid = labels[labels != -1]
+                info["n_clusters"] = len(set(valid.tolist())) if len(valid) else 0
         df["cluster_id"] = labels
         return df, info
 

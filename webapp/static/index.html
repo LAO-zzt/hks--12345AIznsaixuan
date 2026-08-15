@@ -625,7 +625,7 @@
 <script>
 /* ================= 全局状态与工具 ================= */
 const state = { payload: null, overview: null, evSelected: -1, mapMode: "total", selFile: null };
-const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", event: "", category: "", sort: "default", dup: "" };
+const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", event: "", category: "", sort: "default" };
 const $ = (id) => document.getElementById(id);
 
 function esc(s) {
@@ -714,13 +714,14 @@ async function pollStatusPop() {
     if (d.source) meta.push("数据源：" + d.source);
     if (d.running) meta.push("已运行 " + fmtMs(d.elapsed_ms));
     else if (d.finished && d.elapsed_ms) meta.push("上次分析耗时 " + fmtMs(d.elapsed_ms));
-    if (d.has_result && !d.running) meta.push("当前会话已有分析结果");
+    if (d.restored) meta.push("结果来自本地缓存恢复（未重新分析）");
+    else if (d.has_result && !d.running) meta.push("当前会话已有分析结果");
     $("sp-meta").textContent = meta.join(" · ");
     const ico = { done: "✓", running: "◐", pending: "○", skip: "—" };
     $("sp-stages").innerHTML = (d.stages || []).map(s =>
       '<div class="sp-row ' + s.status + '"><span class="sp-ico">' + (ico[s.status] || "○") + '</span>' +
       '<span class="sp-name">' + esc(s.name) + '</span>' +
-      '<span class="sp-ms">' + (s.status === "done" ? fmtMs(s.ms) : (s.status === "running" ? "进行中…" : "")) + "</span></div>").join("");
+      '<span class="sp-ms">' + (s.status === "done" ? (s.ms != null ? fmtMs(s.ms) : "即时") : (s.status === "running" ? "进行中…" : "")) + "</span></div>").join("");
     $("sp-err").textContent = d.error ? ("异常：" + d.error) : "";
   } catch (e) { /* 轮询失败静默重试 */ }
 }
@@ -1028,16 +1029,10 @@ function renderOverview() {
 
   // KPI（全部可点击进工作台）
   const multi = ov ? ov.multi_orders : 0;
-  const dupN = ov ? (ov.dup_orders || 0) : 0;
-  const randomArea = () => {
-    const areas = (ov ? ov.areas : []).map(a => a.area).filter(Boolean);
-    return areas.length ? areas[Math.floor(Math.random() * areas.length)] : "";
-  };
   $("kpi-row").innerHTML =
-    kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({ multi: "", dup: "" })) +
-    kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1", dup: "" })) +
-    kpiCard(dupN.toLocaleString(), "同址重复工单", "k-cyan", () => goWorkbench({ dup: "1", multi: "1", area: randomArea() })) +
-    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({ multi: "1", dup: "" }));
+    kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({ multi: "" })) +
+    kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1" })) +
+    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({ multi: "1" }));
 
   // 区域筛选选项
   const areaSel = $("f-area");
@@ -1108,11 +1103,14 @@ function renderBoard() {
   $("board-count").textContent = "共 " + rows.length + " 个事件";
   $("event-table").querySelector("tbody").innerHTML = rows.map(r => {
     const e = r.e;
-    const noSubject = !e.subject || e.subject.startsWith("（") || e.subject.startsWith("多主体聚合");
-    const name = noSubject ? e.type : e.subject;
-    const sub = noSubject
-      ? (e.area && !e.area.startsWith("（") ? e.area : "")
-      : (e.type + (e.area && !e.area.startsWith("（") ? " · " + e.area : ""));
+    const subj = e.subject || "";
+    const hasSubj = subj && !subj.startsWith("（") && !subj.startsWith("多主体聚合");
+    const name = hasSubj ? subj : e.type;
+    const areaOk = e.area && !e.area.startsWith("（");
+    let sub;
+    if (hasSubj) sub = e.type + (areaOk ? " · " + e.area : "");
+    else if (subj.startsWith("多主体聚合")) sub = (areaOk ? e.area + " · " : "") + subj;
+    else sub = areaOk ? e.area : "";
     return '<tr data-i="' + r.i + '">' +
       "<td>" + esc(e.event_id) + "</td>" +
       '<td><div class="ev-name">' + esc(name) + '</div><div class="ev-sub">' + esc(sub) + "</div></td>" +
@@ -1419,9 +1417,8 @@ async function renderWorkbench() {
     ? ((state.payload.events.find(e => e.event_id === wb.event) || {}).type || wb.event) : "";
   if (wb.area) chips.push(["area", "区域：" + wb.area]);
   if (wb.subject) chips.push(["subject", "主体：" + wb.subject]);
-  if (wb.multi === "1") chips.push(["multi", "重复状态：多频"]);
   if (wb.multi === "0") chips.push(["multi", "重复状态：非多频"]);
-  if (wb.dup === "1") chips.push(["dup", "同址重复：是"]);
+  if (wb.multi === "1") chips.push(["multi", "重复状态：多频"]);
   if (wb.event) chips.push(["event", "事件：" + evName]);
   if (wb.category) chips.push(["category", "诉求：" + wb.category]);
   if (wb.q) chips.push(["q", "关键词：" + wb.q]);
@@ -1433,7 +1430,7 @@ async function renderWorkbench() {
 
   const params = new URLSearchParams({
     page: wb.page, size: wb.size, q: wb.q, area: wb.area, subject: wb.subject,
-    multi: wb.multi, event: wb.event, category: wb.category, sort: wb.sort, dup: wb.dup,
+    multi: wb.multi, event: wb.event, category: wb.category, sort: wb.sort,
   });
   const d = await (await fetch("/api/orders?" + params)).json();
   if (!d.ok) { toast(d.error || "加载失败", true); return; }
@@ -1461,7 +1458,7 @@ async function renderWorkbench() {
   $("wb-next").disabled = d.page >= pages;
 }
 function clearWbFilter(key) {
-  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.event = ""; wb.category = ""; wb.q = ""; wb.dup = ""; }
+  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.event = ""; wb.category = ""; wb.q = ""; }
   else if (key === "q") wb.q = "";
   else wb[key] = "";
   wb.page = 1;
