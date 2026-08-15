@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -154,6 +155,44 @@ _ORG_TYPE_LABEL = {
     "place": "场所",
 }
 
+# 错误主体黑名单（懒加载）
+_SUBJECT_BLACKLIST = None
+
+
+def _load_subject_blacklist() -> set:
+    """加载错误主体黑名单，返回集合。"""
+    global _SUBJECT_BLACKLIST
+    if _SUBJECT_BLACKLIST is None:
+        _SUBJECT_BLACKLIST = set()
+        try:
+            # 尝试加载项目级黑名单
+            project_root = os.path.join(os.path.dirname(__file__), "..", "..")
+            bl_path = os.path.join(project_root, "data", "dicts", "subject_blacklist.txt")
+            if os.path.exists(bl_path):
+                with open(bl_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            _SUBJECT_BLACKLIST.add(line)
+        except Exception:
+            pass
+    return _SUBJECT_BLACKLIST
+
+
+def _is_blacklisted_subject(raw: str) -> bool:
+    """检查主体是否在黑名单中（支持精确匹配和子串匹配）。"""
+    if not raw:
+        return False
+    blacklist = _load_subject_blacklist()
+    # 精确匹配
+    if raw in blacklist:
+        return True
+    # 子串匹配：如果主体包含黑名单词，也视为黑名单
+    for bl in blacklist:
+        if bl and bl in raw:
+            return True
+    return False
+
 
 def _is_valid_org_name(raw: str) -> bool:
     """校验主体名是否有效（非套话片段）。"""
@@ -182,6 +221,7 @@ def extract_organization(text: str) -> Tuple[str, str, float]:
 
     核心策略：社区/小区 > 机构/医院/学校 > 企业 > 商铺/场所。
     当商铺/场所名出现在社区名之后（10字距离内），优先返回社区名。
+    黑名单主体视为未命中，返回空。
     """
     if not text:
         return "", "", 0.0
@@ -190,14 +230,14 @@ def extract_organization(text: str) -> Tuple[str, str, float]:
     community_matches = []
     for m in _COMMUNITY_PATTERN.finditer(text):
         raw = m.group(1).strip()
-        if _is_valid_org_name(raw):
+        if _is_valid_org_name(raw) and not _is_blacklisted_subject(raw):
             community_matches.append((m.start(), m.end(), raw))
 
     # 按优先级尝试每种类型
     for typ, pat in _ORG_KEYWORDS:
         for m in pat.finditer(text):
             raw = m.group(1).strip()
-            if not _is_valid_org_name(raw):
+            if not _is_valid_org_name(raw) or _is_blacklisted_subject(raw):
                 continue
 
             # 社区优先覆盖：若匹配到商铺/场所，且之前有社区名
@@ -205,7 +245,8 @@ def extract_organization(text: str) -> Tuple[str, str, float]:
             if typ in _SHOP_PLACE_TYPES and community_matches:
                 for c_start, c_end, c_raw in community_matches:
                     if c_start < m.start() and m.start() - c_end <= 10:
-                        return c_raw, "小区", 0.85
+                        if not _is_blacklisted_subject(c_raw):
+                            return c_raw, "小区", 0.85
 
             # 截取最后一个动词之后的部分
             cut_pos = -1
@@ -215,17 +256,18 @@ def extract_organization(text: str) -> Tuple[str, str, float]:
                     cut_pos = pos + len(kw)
             if cut_pos > 0 and cut_pos < len(raw):
                 candidate = raw[cut_pos:].strip()
-                if len(candidate) >= 2 and _is_valid_org_name(candidate):
+                if len(candidate) >= 2 and _is_valid_org_name(candidate) and not _is_blacklisted_subject(candidate):
                     raw = candidate
 
-            if not _is_valid_org_name(raw):
+            if not _is_valid_org_name(raw) or _is_blacklisted_subject(raw):
                 continue
             return raw, _ORG_TYPE_LABEL.get(typ, "organization"), 0.7
 
     # 兜底：有社区匹配但没被选中时，返回第一个社区
     if community_matches:
         _, _, raw = community_matches[0]
-        return raw, "小区", 0.6
+        if not _is_blacklisted_subject(raw):
+            return raw, "小区", 0.6
 
     return "", "", 0.0
 

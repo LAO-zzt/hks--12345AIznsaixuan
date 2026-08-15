@@ -125,16 +125,19 @@ class CleaningPipeline:
         org_raw = ""
         org_type = ""
         org_conf = 0.0
-        from ticket_cleaner.extractors import extract_organization
+        from ticket_cleaner.extractors import extract_organization, _is_blacklisted_subject
 
         # 方案A：1. 从标题提取主体（标题是人工编写，主体密度最高）
         if record.title:
             org_raw, org_type, org_conf = extract_organization(record.title)
-            if org_raw:
+            if org_raw and not _is_blacklisted_subject(org_raw):
                 logger.debug(f"  [主体] 从标题提取: {org_raw} (类型: {org_type})")
+            elif org_raw and _is_blacklisted_subject(org_raw):
+                org_raw = ""
+                logger.debug(f"  [主体] 从标题提取命中黑名单，丢弃")
 
         # 方案B：2. 从地址community提取（地址解析最可靠）
-        if not org_raw and addr["community"]:
+        if not org_raw and addr["community"] and not _is_blacklisted_subject(addr["community"]):
             org_raw = addr["community"]
             org_type = "小区"
             org_conf = 0.85
@@ -143,27 +146,23 @@ class CleaningPipeline:
         # 3. 从地址原文提取主体
         if not org_raw and addr["address_raw"]:
             org_raw, org_type, org_conf = extract_organization(addr["address_raw"])
-            if org_raw:
+            if org_raw and not _is_blacklisted_subject(org_raw):
                 logger.debug(f"  [主体] 从地址原文提取: {org_raw}")
+            elif org_raw and _is_blacklisted_subject(org_raw):
+                org_raw = ""
 
         # 4. 如果地址中没找到，从全文提取
         if not org_raw:
             org_raw, org_type, org_conf = extract_organization(record.content)
-            if org_raw:
+            if org_raw and not _is_blacklisted_subject(org_raw):
                 logger.debug(f"  [主体] 从全文提取: {org_raw}")
+            elif org_raw and _is_blacklisted_subject(org_raw):
+                org_raw = ""
         
-        # 5. 高德地图验证
-        if org_raw:
-            from ticket_cleaner.gaode_cache import verify_entity_in_gaode
-            logger.debug(f"  [主体] 调用高德验证: {org_raw}")
-            if verify_entity_in_gaode(org_raw):
-                logger.info(f"  [主体] ✓ 高德验证通过: {org_raw}")
-                t.organization_normalized = org_raw
-                t.organization_confidence = 0.9
-            else:
-                logger.debug(f"  [主体] 高德未命中，保留原名: {org_raw}")
-                t.organization_normalized = org_raw
-                t.organization_confidence = org_conf
+        # 5. 最终黑名单过滤（高德验证默认关闭，避免网络请求阻塞）
+        if org_raw and not _is_blacklisted_subject(org_raw):
+            t.organization_normalized = org_raw
+            t.organization_confidence = org_conf
         else:
             t.organization_normalized = ""
             t.organization_confidence = 0.0

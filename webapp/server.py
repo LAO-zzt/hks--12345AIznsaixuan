@@ -81,18 +81,20 @@ def _run_textclean(df):
 
     def _pick_subject(tc_result, title, raw_subj):
         """方案A：textclean结果（标题优先已在pipeline中实现）→ 标题正则 → 原始字段 → 兜底。"""
+        from ticket_cleaner.extractors import _is_blacklisted_subject
         # textclean已在pipeline中按"标题→community→地址→全文"优先级提取
         if tc_result and tc_result.organization_normalized:
-            return tc_result.organization_normalized
+            if not _is_blacklisted_subject(tc_result.organization_normalized):
+                return tc_result.organization_normalized
         # 方案A兜底：直接从标题提取
         if title:
             cleaned, _, _ = extract_organization(str(title))
-            if cleaned:
+            if cleaned and not _is_blacklisted_subject(cleaned):
                 return cleaned
         # 原始字段清洗
         if raw_subj:
             cleaned, _, _ = extract_organization(_nz(raw_subj))
-            if cleaned:
+            if cleaned and not _is_blacklisted_subject(cleaned):
                 return cleaned
         return ""
 
@@ -399,6 +401,18 @@ def _build_payload(df, events, info, warnings) -> dict:
     multi_total = int(df["is_multi_freq"].groupby(df["cluster_id"]).any().sum()) \
         if "is_multi_freq" in df.columns else len(events)
 
+    # 统计主体总数和事件总数（去重，排除空值和黑名单）
+    total_subjects = 0
+    total_events = 0
+    if "extracted_subject" in df.columns:
+        subj_s = df["extracted_subject"].astype(str).str.strip()
+        subj_s = subj_s[(subj_s != "") & (subj_s != "nan")]
+        total_subjects = int(subj_s.nunique())
+    if "extracted_event" in df.columns:
+        ev_s = df["extracted_event"].astype(str).str.strip()
+        ev_s = ev_s[(ev_s != "") & (ev_s != "nan")]
+        total_events = int(ev_s.nunique())
+
     # 事件按频次降序，限量展示 Top N
     max_events = getattr(config, "MAX_DISPLAY_EVENTS", 100)
     ranked = sorted(events, key=lambda e: -int(e.get("frequency", 0)))
@@ -482,6 +496,8 @@ def _build_payload(df, events, info, warnings) -> dict:
         "kpis": {
             "total_orders": int(len(df)),
             "multi_events": multi_total,
+            "total_subjects": total_subjects,
+            "total_events": total_events,
             "biggest_event": _display_name(events[0]) if events else "—",
         },
         "method": info.get("method", ""),

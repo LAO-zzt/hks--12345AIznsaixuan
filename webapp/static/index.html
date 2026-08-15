@@ -119,7 +119,7 @@
   }
   .source-bar b { color: var(--text); font-weight: 600; }
   .source-bar .link { color: var(--accent); cursor: pointer; margin-left: auto; }
-  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 18px; }
   .kpi {
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
     padding: 15px 17px; position: relative; overflow: hidden; cursor: pointer;
@@ -131,6 +131,7 @@
   .kpi.k-cyan::before { background: var(--cyan); }
   .kpi.k-amber::before { background: var(--amber); }
   .kpi.k-green::before { background: var(--green); }
+  .kpi.k-purple::before { background: #8b5cf6; }
   .kpi .num { font-size: 27px; font-weight: 800; line-height: 1.15; }
   .kpi .lbl { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
   .ov-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; margin-bottom: 18px; }
@@ -1032,7 +1033,9 @@ function renderOverview() {
   $("kpi-row").innerHTML =
     kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({ multi: "" })) +
     kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1" })) +
-    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({ multi: "1" }));
+    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({ multi: "1" })) +
+    kpiCard((p.kpis.total_subjects || 0).toLocaleString(), "识别主体", "k-green", () => goWorkbench({ multi: "" })) +
+    kpiCard((p.kpis.total_events || 0).toLocaleString(), "识别事件", "k-purple", () => goWorkbench({ multi: "" }));
 
   // 区域筛选选项
   const areaSel = $("f-area");
@@ -1114,7 +1117,7 @@ function renderBoard() {
     return '<tr data-i="' + r.i + '">' +
       "<td>" + esc(e.event_id) + "</td>" +
       '<td><div class="ev-name">' + esc(name) + '</div><div class="ev-sub">' + esc(sub) + "</div></td>" +
-      "<td>" + esc(e.area) + "</td>" +
+      "<td>" + esc(e.area || "未命中") + "</td>" +
       "<td><b>" + e.frequency + "</b></td>" +
       "<td>" + esc(e.first_seen || "—") + "</td>" +
       "<td>" + esc(e.last_seen || "—") + "</td>" +
@@ -1437,8 +1440,8 @@ async function renderWorkbench() {
     '<tr data-oid="' + esc(r.order_id) + '">' +
     "<td>" + esc(r.order_id) + "</td>" +
     '<td><div class="ev-name">' + esc(r.title || "—") + '</div><div class="ev-sub">' + esc(r.content) + "</div></td>" +
-    "<td>" + esc(r.area || "—") + "</td>" +
-    "<td>" + esc(r.subject || "—") + "</td>" +
+    "<td>" + esc(r.area || "未命中") + "</td>" +
+    "<td>" + esc(r.subject || "未命中") + "</td>" +
     "<td>" + (r.event ? esc(r.event) + ' <span class="badge b-gray">' + esc(r.event_id) + "</span>" : "—") + "</td>" +
     "<td>" + (r.multi ? "<b>" + r.size + "</b>" : "1") + "</td>" +
     "<td>" + esc(r.time || "—") + "</td>" +
@@ -1513,8 +1516,8 @@ async function renderOrder(oid) {
       : '<div class="conclusion">该工单暂未发现重复关联。</div>') +
     '<div class="field-list" style="margin-top:12px">' +
       field("事件类型", cl.event_type ? esc(cl.event_type) : "—") +
-      field("主体", ai.subject ? esc(ai.subject) : "—") +
-      field("区域", ai.area ? esc(ai.area) : "—") +
+      field("主体", ai.subject ? esc(ai.subject) : "未命中") +
+      field("区域", ai.area ? esc(ai.area) : "未命中") +
       field("所属事件簇", cl.event_id ? esc(cl.event_id) : "—") +
       field("详细地址", ai.detail_addr ? esc(ai.detail_addr) : "—") +
     "</div>" +
@@ -1541,7 +1544,7 @@ async function renderOrder(oid) {
             '<tr onclick="goOrder(\'' + esc(m.order_id) + '\')">' +
             "<td>" + esc(m.order_id) + "</td>" +
             "<td>" + esc(m.content) + "</td>" +
-            "<td>" + esc(m.area || "—") + "</td>" +
+            "<td>" + esc(m.area || "未命中") + "</td>" +
             "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
           "</tbody></table></div>"
         : '<div class="muted" style="padding:20px">无同地点关联工单。</div>') +

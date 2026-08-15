@@ -10,6 +10,7 @@
 规则优先级：结构化字段 > 本地词典 > 后缀规则 > 正则 > 留空（不伪造）。
 全部采用向量化实现，十万级数据可在数十秒内完成。
 """
+import os
 import re
 
 import pandas as pd
@@ -43,39 +44,79 @@ _SHOP_PLACE_RE = re.compile(r"([\u4e00-\u9fa5]{2,12}(?:" + "|".join(_SHOP_SUFFIX
 # 商铺/场所后缀集合（用于社区覆盖判断）
 _SHOP_PLACE_SUFFIX = set(_SHOP_SUFFIX + _PLACE_SUFFIX)
 
+# 错误主体黑名单（懒加载）
+_SUBJECT_BLACKLIST = None
+
 _AREA_TERMS = None
 _AREA_DICT_RE = None
+
+
+def _load_subject_blacklist() -> set:
+    """加载错误主体黑名单，返回集合。"""
+    global _SUBJECT_BLACKLIST
+    if _SUBJECT_BLACKLIST is None:
+        _SUBJECT_BLACKLIST = set()
+        try:
+            path = os.path.join("data", "dicts", "subject_blacklist.txt")
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        _SUBJECT_BLACKLIST.add(line)
+        except Exception:
+            pass
+    return _SUBJECT_BLACKLIST
+
+
+def _is_blacklisted_subject(raw: str) -> bool:
+    """检查主体是否在黑名单中（支持精确匹配和子串匹配）。"""
+    if not raw:
+        return False
+    blacklist = _load_subject_blacklist()
+    # 精确匹配
+    if raw in blacklist:
+        return True
+    # 子串匹配：如果主体包含黑名单词，也视为黑名单
+    for bl in blacklist:
+        if bl and bl in raw:
+            return True
+    return False
 
 
 def _extract_subject_from_text(text: str) -> str:
     """从单条文本中按优先级提取主体（社区 > 机构 > 企业 > 商铺/场所）。
 
     当商铺/场所名出现在社区名之后（10字距离内），优先返回社区名。
+    黑名单主体视为未命中，返回空。
     """
     if not text:
         return ""
     text = str(text)
 
-    # 预扫描社区匹配
+    # 预扫描社区匹配（排除黑名单）
     community_hits = [(m.start(), m.end(), m.group(1))
-                      for m in _COMMUNITY_RE.finditer(text)]
+                      for m in _COMMUNITY_RE.finditer(text)
+                      if not _is_blacklisted_subject(m.group(1))]
 
     # 按优先级尝试：社区 → 机构 → 企业 → 商铺/场所
     for pat in (_COMMUNITY_RE, _INSTITUTION_RE, _COMPANY_RE, _SHOP_PLACE_RE):
         for m in pat.finditer(text):
             raw = m.group(1).strip()
-            if not raw:
+            if not raw or _is_blacklisted_subject(raw):
                 continue
             # 社区优先覆盖：若当前是商铺/场所类型，且之前有社区名
             if pat is _SHOP_PLACE_RE and community_hits:
                 for c_start, c_end, c_raw in community_hits:
                     if c_start < m.start() and m.start() - c_end <= 10:
-                        return c_raw
+                        if not _is_blacklisted_subject(c_raw):
+                            return c_raw
             return raw
 
     # 兜底：有社区匹配但没被选中时
     if community_hits:
-        return community_hits[0][2]
+        _, _, raw = community_hits[0]
+        if not _is_blacklisted_subject(raw):
+            return raw
     return ""
 
 
