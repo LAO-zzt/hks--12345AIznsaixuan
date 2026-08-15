@@ -32,7 +32,8 @@ gaode:
   cache_file: data/cache/shunde_poi_cache.json
   
   # 是否启用高德验证（false则只用LLM）
-  enabled: true
+  # 注意：全量分析约12.8万条，开启会触发高德API限流，调优阶段再开启
+  enabled: false
 
 # ============ 数据库配置 ============
 database:

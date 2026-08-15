@@ -327,6 +327,26 @@
   #toast.show { opacity: 1; }
   #toast.err { border-color: var(--red); color: #ffb4ae; }
 
+  /* ---------- 实时处理状态弹层 ---------- */
+  #data-status { cursor: pointer; }
+  #status-pop {
+    position: fixed; top: 54px; right: 16px; width: 350px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; z-index: 200; box-shadow: 0 10px 36px rgba(0,0,0,.45);
+  }
+  #status-pop h3 { font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  #status-pop h3 i { cursor: pointer; font-style: normal; color: var(--muted); }
+  #sp-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; line-height: 1.6; }
+  .sp-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; padding: 6px 0;
+            border-bottom: 1px dashed rgba(255,255,255,.07); }
+  .sp-row:last-child { border-bottom: none; }
+  .sp-row .sp-name { flex: 1; }
+  .sp-row .sp-ms { font-size: 11.5px; color: var(--muted); }
+  .sp-row.done .sp-ico { color: #2dd4bf; }
+  .sp-row.running .sp-ico { color: #3d7eff; animation: spin 1.2s linear infinite; display: inline-block; }
+  .sp-row.skip .sp-name { color: var(--muted); }
+  #sp-err { color: #ff8f88; font-size: 12px; margin-top: 8px; line-height: 1.5; }
+
   @media (max-width: 1100px) {
     .kpi-row { grid-template-columns: repeat(3, 1fr); }
     .ov-grid, .ov-grid2, .od-grid { grid-template-columns: 1fr; }
@@ -454,6 +474,7 @@
           <option value="freq">按频次</option>
           <option value="time">按时间最新</option>
         </select>
+        <select class="tool-select" id="wb-category"><option value="">按诉求分类</option></select>
       </div>
       <div class="wb-actions">
         <a class="btn small" href="/api/download/csv">导出 CSV</a>
@@ -580,6 +601,7 @@
       </div>
     </details>
   </div>
+  <button class="btn" style="width:100%;margin-top:10px" id="btn-clear-cache">清理缓存并重新分析</button>
 </aside>
 
 <!-- 进度遮罩 / toast -->
@@ -589,14 +611,21 @@
     <div class="prog-title" id="prog-text">正在加载工单数据…</div>
     <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
     <div class="prog-sub" id="prog-sub">系统正在自动分析，请稍候</div>
+    <div style="margin-top:12px;font-size:12.5px"><span class="link" id="prog-detail-link">查看实时处理状态 →</span></div>
   </div>
 </div>
 <div id="toast"></div>
+<div id="status-pop" class="hidden">
+  <h3>后台处理状态 <i id="sp-close">✕</i></h3>
+  <div id="sp-meta"></div>
+  <div id="sp-stages"></div>
+  <div id="sp-err"></div>
+</div>
 
 <script>
 /* ================= 全局状态与工具 ================= */
 const state = { payload: null, overview: null, evSelected: -1, mapMode: "total", selFile: null };
-const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", event: "", sort: "default" };
+const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", event: "", category: "", sort: "default", dup: "" };
 const $ = (id) => document.getElementById(id);
 
 function esc(s) {
@@ -675,6 +704,43 @@ function stopProgress() {
   setTimeout(() => $("progress-overlay").classList.add("hidden"), 350);
 }
 
+/* ================= 实时处理状态弹层 ================= */
+let spTimer = null;
+function fmtMs(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms"; }
+async function pollStatusPop() {
+  try {
+    const d = await (await fetch("/api/status")).json();
+    const meta = [];
+    if (d.source) meta.push("数据源：" + d.source);
+    if (d.running) meta.push("已运行 " + fmtMs(d.elapsed_ms));
+    else if (d.finished && d.elapsed_ms) meta.push("上次分析耗时 " + fmtMs(d.elapsed_ms));
+    if (d.has_result && !d.running) meta.push("当前会话已有分析结果");
+    $("sp-meta").textContent = meta.join(" · ");
+    const ico = { done: "✓", running: "◐", pending: "○", skip: "—" };
+    $("sp-stages").innerHTML = (d.stages || []).map(s =>
+      '<div class="sp-row ' + s.status + '"><span class="sp-ico">' + (ico[s.status] || "○") + '</span>' +
+      '<span class="sp-name">' + esc(s.name) + '</span>' +
+      '<span class="sp-ms">' + (s.status === "done" ? fmtMs(s.ms) : (s.status === "running" ? "进行中…" : "")) + "</span></div>").join("");
+    $("sp-err").textContent = d.error ? ("异常：" + d.error) : "";
+  } catch (e) { /* 轮询失败静默重试 */ }
+}
+function toggleStatusPop(show) {
+  const pop = $("status-pop");
+  const on = (show != null) ? show : pop.classList.contains("hidden");
+  pop.classList.toggle("hidden", !on);
+  if (on) { pollStatusPop(); spTimer = setInterval(pollStatusPop, 1000); }
+  else if (spTimer) { clearInterval(spTimer); spTimer = null; }
+}
+$("data-status").addEventListener("click", () => toggleStatusPop());
+$("sp-close").addEventListener("click", () => toggleStatusPop(false));
+$("prog-detail-link").addEventListener("click", () => toggleStatusPop(true));
+document.addEventListener("click", e => {
+  const pop = $("status-pop");
+  if (pop.classList.contains("hidden")) return;
+  if (pop.contains(e.target) || e.target.closest("#data-status")) return;
+  toggleStatusPop(false);
+});
+
 /* ================= 启动：系统默认已在工作 ================= */
 function llmEnabled() {
   const r = document.querySelector('input[name="llm_mode"]:checked');
@@ -694,7 +760,8 @@ async function runAnalysis(opts) {
   else if (opts && opts.feishu_url) fd.append("feishu_url", opts.feishu_url);
   else {
     const v = $("file-select").value;
-    if (v.startsWith("feishu:")) {
+    if (v === "upload:cur" && state.selFile) fd.append("file", state.selFile);
+    else if (v.startsWith("feishu:")) {
       const id = v.slice("feishu:".length);
       const data = await (await fetch("/api/datafiles")).json();
       const s = (data.feishu_sources || []).find(x => x.id === id);
@@ -810,10 +877,23 @@ $("btn-analyze").addEventListener("click", async () => {
 });
 $("btn-sample").addEventListener("click", async () => {
   state.selFile = null;
+  dropUploadOption();
   $("file-select").value = "";
   $("file-name").textContent = "";
   closeDrawer();
   await runAnalysis({ datafile: "" });
+});
+$("btn-clear-cache").addEventListener("click", async () => {
+  if (!confirm("确认清理分析缓存？清理后将立即全量重新分析（耗时较长）")) return;
+  try {
+    const r = await (await fetch("/api/clear_cache", { method: "POST" })).json();
+    if (!r.ok) { toast(r.error || "清理失败", true); return; }
+    closeDrawer();
+    toast("已清理 " + r.removed + " 个缓存文件，正在重新分析…");
+    await boot();
+  } catch (e) {
+    toast("清理失败：" + e, true);
+  }
 });
 
 /* 数据源：上传 / 本地文件 / 预览 */
@@ -829,9 +909,21 @@ fi.addEventListener("change", () => { if (fi.files.length) setFile(fi.files[0]);
 function setFile(f) {
   if (!/\.(csv|xlsx)$/i.test(f.name)) { toast("请上传 CSV 或 Excel 文件", true); return; }
   state.selFile = f;
-  $("file-select").value = "";
+  const sel = $("file-select");
+  let opt = sel.querySelector('option[value="upload:cur"]');
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = "upload:cur";
+    sel.insertBefore(opt, sel.options[1] || null);
+  }
+  opt.textContent = "📤 " + f.name;
+  sel.value = "upload:cur";
   $("file-name").textContent = "已选择：" + f.name;
   loadPreview({ file: f });
+}
+function dropUploadOption() {
+  const up = $("file-select").querySelector('option[value="upload:cur"]');
+  if (up) up.remove();
 }
 async function loadLocalFiles() {
   try {
@@ -853,8 +945,14 @@ async function loadLocalFiles() {
   } catch (e) { /* 忽略 */ }
 }
 $("file-select").addEventListener("change", () => {
-  state.selFile = null; fi.value = ""; $("file-name").textContent = "";
   const v = $("file-select").value;
+  if (v === "upload:cur" && state.selFile) {
+    $("file-name").textContent = "已选择：" + state.selFile.name;
+    loadPreview({ file: state.selFile });
+    return;
+  }
+  state.selFile = null; fi.value = ""; $("file-name").textContent = "";
+  dropUploadOption();
   if (v.startsWith("feishu:")) {
     const id = v.slice("feishu:".length);
     fetch("/api/datafiles").then(r => r.json()).then(d => {
@@ -915,9 +1013,11 @@ function renderOverview() {
 
   // KPI（全部可点击进工作台）
   const multi = ov ? ov.multi_orders : 0;
+  const dupN = ov ? (ov.dup_orders || 0) : 0;
   $("kpi-row").innerHTML =
-    kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({})) +
-    kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1" })) +
+    kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({ multi: "", dup: "" })) +
+    kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1", dup: "" })) +
+    kpiCard(dupN.toLocaleString(), "同址重复工单", "k-cyan", () => goWorkbench({ dup: "1", multi: "" })) +
     kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({}));
 
   // 区域筛选选项
@@ -1277,11 +1377,21 @@ async function renderWorkbench() {
       subjSel.appendChild(o);
     });
   }
+  // 诉求分类选项
+  const catSel = $("wb-category");
+  if (catSel.options.length <= 1 && state.overview) {
+    (state.overview.categories || []).forEach(c => {
+      const o = document.createElement("option");
+      o.value = c.category; o.textContent = c.category + " (" + c.count + ")";
+      catSel.appendChild(o);
+    });
+  }
   // 控件同步
   $("wb-q").value = wb.q;
   $("wb-area").value = wb.area;
   $("wb-subject").value = wb.subject;
   $("wb-multi").value = wb.multi;
+  $("wb-category").value = wb.category;
   $("wb-sort").value = wb.sort;
 
   // 筛选条件 chips
@@ -1292,7 +1402,9 @@ async function renderWorkbench() {
   if (wb.subject) chips.push(["subject", "主体：" + wb.subject]);
   if (wb.multi === "1") chips.push(["multi", "重复状态：多频"]);
   if (wb.multi === "0") chips.push(["multi", "重复状态：非多频"]);
+  if (wb.dup === "1") chips.push(["dup", "同址重复：是"]);
   if (wb.event) chips.push(["event", "事件：" + evName]);
+  if (wb.category) chips.push(["category", "诉求：" + wb.category]);
   if (wb.q) chips.push(["q", "关键词：" + wb.q]);
   $("wb-chips").innerHTML = chips.length
     ? '<span class="muted">当前筛选：</span>' + chips.map(c =>
@@ -1302,7 +1414,7 @@ async function renderWorkbench() {
 
   const params = new URLSearchParams({
     page: wb.page, size: wb.size, q: wb.q, area: wb.area, subject: wb.subject,
-    multi: wb.multi, event: wb.event, sort: wb.sort,
+    multi: wb.multi, event: wb.event, category: wb.category, sort: wb.sort, dup: wb.dup,
   });
   const d = await (await fetch("/api/orders?" + params)).json();
   if (!d.ok) { toast(d.error || "加载失败", true); return; }
@@ -1330,7 +1442,7 @@ async function renderWorkbench() {
   $("wb-next").disabled = d.page >= pages;
 }
 function clearWbFilter(key) {
-  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.event = ""; wb.q = ""; }
+  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.event = ""; wb.category = ""; wb.q = ""; wb.dup = ""; }
   else if (key === "q") wb.q = "";
   else wb[key] = "";
   wb.page = 1;
@@ -1340,7 +1452,7 @@ $("wb-q").addEventListener("input", () => {
   clearTimeout(wbTimer);
   wbTimer = setTimeout(() => { wb.q = $("wb-q").value.trim(); wb.page = 1; renderWorkbench(); }, 400);
 });
-[["wb-area", "area"], ["wb-subject", "subject"], ["wb-multi", "multi"], ["wb-sort", "sort"]].forEach(pair => {
+[["wb-area", "area"], ["wb-subject", "subject"], ["wb-multi", "multi"], ["wb-category", "category"], ["wb-sort", "sort"]].forEach(pair => {
   $(pair[0]).addEventListener("change", () => { wb[pair[1]] = $(pair[0]).value; wb.page = 1; renderWorkbench(); });
 });
 $("wb-prev").addEventListener("click", () => { if (wb.page > 1) { wb.page--; renderWorkbench(); } });
@@ -1390,6 +1502,7 @@ async function renderOrder(oid) {
       field("主体", ai.subject ? esc(ai.subject) : "—") +
       field("区域", ai.area ? esc(ai.area) : "—") +
       field("所属事件簇", cl.event_id ? esc(cl.event_id) : "—") +
+      field("详细地址", ai.detail_addr ? esc(ai.detail_addr) : "—") +
     "</div>" +
     (basisHtml ? '<div class="basis-row" style="margin-top:12px">' + basisHtml + "</div>" : "") +
     (d.similar && d.similar.length
@@ -1407,7 +1520,7 @@ async function renderOrder(oid) {
       '<div class="raw-content">' + esc(o.content) + "</div>" +
     "</div>" +
 
-    '<div class="card"><h2>关联工单<span class="h-note">共 ' + d.mates.length + ' 条 · 点击跳转</span></h2>' +
+    '<div class="card"><h2>关联工单<span class="h-note">同地点 ' + (d.mates_total != null ? d.mates_total : d.mates.length) + ' 条 · 点击跳转</span></h2>' +
       (d.mates.length
         ? '<div class="scroll-y"><table class="clickable"><thead><tr><th>工单号</th><th>诉求内容</th><th>区域</th><th>时间</th></tr></thead><tbody>' +
           d.mates.map(m =>
@@ -1417,7 +1530,7 @@ async function renderOrder(oid) {
             "<td>" + esc(m.area || "—") + "</td>" +
             "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
           "</tbody></table></div>"
-        : '<div class="muted" style="padding:20px">无其他关联工单。</div>') +
+        : '<div class="muted" style="padding:20px">无同地点关联工单。</div>') +
     "</div>" +
   "</div>";
 }

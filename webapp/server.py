@@ -12,6 +12,7 @@ FastAPI 服务入口（webapp/server.py）——自研 Web 版
 启动：python webapp/server.py   （默认 http://127.0.0.1:8600）
 """
 import os
+import re
 import sys
 
 # 保证从任意目录启动都能导入项目模块
@@ -32,6 +33,7 @@ from modules import (
 from utils.helpers import truncate, load_area_coords
 
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(WEB_DIR)
 
 app = FastAPI(title="12345 高频事件智能预警与处置辅助系统 API")
 app.mount("/static", StaticFiles(directory=os.path.join(WEB_DIR, "static")), name="static")
@@ -41,6 +43,260 @@ STATE = {"df": None, "events": None, "source_meta": None}
 
 # 结果级缓存：相同 数据源+参数 组合直接命中，避免重复跑全量流水线
 RESULT_CACHE_DIR = os.path.join(config.OUTPUT_DIR, "cache")
+
+# textclean_module 清洗流水线（懒加载单例）
+_TCM = {"pipeline": None}
+
+
+def _get_textclean_pipeline():
+    import logging
+    if _TCM["pipeline"] is None:
+        logging.getLogger("ticket_cleaner").setLevel(logging.ERROR)
+        import textclean_module as tcm
+        data_dir = os.path.join(PROJECT_DIR, "textclean_module", "data")
+        os.makedirs(data_dir, exist_ok=True)
+        cfg = tcm.Config(db_path=os.path.join(data_dir, "cleaner.db"),
+                         work_dir=data_dir, source_excel_path="")
+        from ticket_cleaner.pipeline import CleaningPipeline
+        _TCM["pipeline"] = CleaningPipeline(cfg, tcm.Storage(cfg.db_path))
+    return _TCM["pipeline"]
+
+
+def _run_textclean(df):
+    """textclean_module 清洗+实体抽取，映射到现有流水线列（布局/接口不变）。"""
+    pipeline = _get_textclean_pipeline()
+    from ticket_cleaner.schema import TicketRecord
+    records = [
+        TicketRecord(
+            ticket_no=str(r.order_id), title=str(r.title or ""),
+            content=str(r.content or ""), region=str(r.area or ""))
+        for r in df.itertuples(index=False)
+    ]
+    cleaned = pipeline.process_batch(records)
+
+    def _nz(v):
+        v = str(v).strip()
+        return v if v and v != "nan" else ""
+
+    df = df.copy()
+    contents = df["content"].astype(str).tolist()
+    subjects = df["subject"].astype(str).tolist() if "subject" in df else [""] * len(df)
+    areas = df["area"].astype(str).tolist() if "area" in df else [""] * len(df)
+    df["normalized_content"] = [
+        (t.semantic_content or t.clean_content or c) for t, c in zip(cleaned, contents)]
+    df["extracted_subject"] = [
+        (t.organization_normalized or _nz(raw)) for t, raw in zip(cleaned, subjects)]
+    df["extracted_event"] = [t.event_type or "" for t in cleaned]
+    df["extracted_area"] = [(t.town or _nz(raw)) for t, raw in zip(cleaned, areas)]
+    df["addr_norm"] = [t.address_normalized or "" for t in cleaned]
+    df["addr_community"] = [t.community or "" for t in cleaned]
+    df["addr_building"] = [t.building or "" for t in cleaned]
+    return df
+
+
+_ADDR_LANDMARK = ("村", "社区", "路", "街", "大道", "园", "市场", "广场", "工业区")
+_SUBJ_GENERIC = {"政府", "村委会", "居委会", "村委", "居委",
+                 "物业公司", "物业", "管理处", "服务中心"}
+
+
+def _has_landmark(s):
+    """含地标词（“街道”行政后缀不算，防整个街道误匹配）。"""
+    return any(k in s.replace("街道", "") for k in _ADDR_LANDMARK)
+
+
+def _addr_contains(a, b):
+    """地址去门牌后互为包含（短串≥5字且含地标词）。对称。"""
+    if not a or not b:
+        return False
+    ca = re.sub(r"[0-9０-９]", "", a)
+    cb = re.sub(r"[0-9０-９]", "", b)
+    short, lng = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
+    return len(short) >= 5 and short in lng and _has_landmark(short)
+
+
+def _norm_subject(s):
+    """有效语义主体：≥4字且非泛化机构名，否则视为无主体。"""
+    s = (s or "").strip()
+    return s if len(s) >= 4 and s not in _SUBJ_GENERIC else ""
+
+
+def _is_same_place(a, b, sim=None):
+    """同簇内判定两工单是否同一地点。纯对称函数：A↔B 判定结果必然一致。
+
+    条件（从严到宽）：
+      1 归一化地址完全一致
+      2 社区+楼栋均一致
+      3 同社区 且 地址去门牌互含
+      4 双方无社区但楼栋一致
+      5 主体语义一致且同镇街，且 地址互含 或 双方均无社区
+      6 双方地址字段全空时，内容语义相似度（TF-IDF+SVD 余弦）≥0.65 兜底
+    """
+    if a["addr"] and a["addr"] == b["addr"]:
+        return True
+    if a["comm"] and a["comm"] == b["comm"]:
+        if a["bld"] and a["bld"] == b["bld"]:
+            return True
+        if _addr_contains(a["addr"], b["addr"]):
+            return True
+    if not a["comm"] and not b["comm"] and a["bld"] and a["bld"] == b["bld"]:
+        return True
+    sa, sb = _norm_subject(a["subj"]), _norm_subject(b["subj"])
+    if sa and sa == sb and a["area"] == b["area"] and \
+            (_addr_contains(a["addr"], b["addr"]) or (not a["comm"] and not b["comm"])):
+        return True
+    if sim is not None and sim >= 0.65 and \
+            not any((a["addr"], a["comm"], a["bld"])) and \
+            not any((b["addr"], b["comm"], b["bld"])):
+        return True
+    return False
+
+
+# 全量语义向量缓存（textclean TfidfEmbedder：TF-IDF+SVD，向量已L2归一化）
+_SEM = {"df_id": None, "matrix": None}
+
+
+def _semantic_matrix(df):
+    """懒加载：对全量 normalized_content 计算语义向量矩阵（与分析 df 对齐）。"""
+    if _SEM["df_id"] == id(df):
+        return _SEM["matrix"]
+    matrix = None
+    try:
+        from ticket_cleaner.embedding import TfidfEmbedder
+        texts = df["normalized_content"].astype(str).fillna("").tolist()
+        emb = TfidfEmbedder(target_dim=128)
+        emb.fit(texts)
+        matrix = emb.embed(texts)
+    except Exception:
+        matrix = None
+    _SEM.update(df_id=id(df), matrix=matrix)
+    return matrix
+
+
+# 同址重复工单标记缓存（口径与详情页关联工单 _is_same_place 完全一致）
+_DUP = {"df_id": None, "mask": None}
+
+
+def _dup_same_place_mask(df):
+    """标记每条工单在簇内是否存在“同地点”关联工单。
+
+    分桶剪枝：簇内按候选键（归一化地址/社区+楼栋/社区/楼栋/主体+镇街/地址全空）分桶，
+    仅桶内两两判定，避免全量 O(n²)；全空桶用语义矩阵批量算相似度。
+    """
+    if _DUP["df_id"] == id(df):
+        return _DUP["mask"]
+    mask = pd.Series(False, index=df.index)
+    try:
+        pos_map = {str(v): i for i, v in enumerate(df["order_id"].astype(str))}
+        sub = df[df["cluster_id"] != -1]
+        for _, g in sub.groupby("cluster_id"):
+            rows = [{
+                "idx": idx,
+                "oid": str(v.get("order_id", "")),
+                "addr": str(v.get("addr_norm", "") or ""),
+                "comm": str(v.get("addr_community", "") or ""),
+                "bld": str(v.get("addr_building", "") or ""),
+                "subj": str(v.get("extracted_subject", "") or ""),
+                "area": str(v.get("extracted_area", "") or ""),
+            } for idx, v in g.iterrows()]
+            buckets = {}
+            for i, r in enumerate(rows):
+                keys = []
+                if r["addr"]:
+                    keys.append(("a", r["addr"]))
+                    if r["comm"]:
+                        keys.append(("c", r["comm"]))
+                if r["comm"] and r["bld"]:
+                    keys.append(("cb", r["comm"], r["bld"]))
+                if not r["comm"] and r["bld"]:
+                    keys.append(("b", r["bld"]))
+                if _norm_subject(r["subj"]):
+                    keys.append(("s", r["subj"], r["area"]))
+                if not r["addr"] and not r["comm"] and not r["bld"]:
+                    keys.append(("e",))
+                for k in keys:
+                    buckets.setdefault(k, []).append(i)
+            for k, members in buckets.items():
+                if len(members) < 2:
+                    continue
+                if k[0] == "e":
+                    _dup_mark_semantic(df, rows, members, pos_map, mask)
+                else:
+                    for x in range(len(members)):
+                        for y in range(x + 1, len(members)):
+                            if _is_same_place(rows[members[x]], rows[members[y]]):
+                                mask.loc[rows[members[x]]["idx"]] = True
+                                mask.loc[rows[members[y]]["idx"]] = True
+    except Exception:
+        pass
+    _DUP.update(df_id=id(df), mask=mask)
+    return mask
+
+
+def _dup_mark_semantic(df, rows, members, pos_map, mask):
+    """地址全空桶：TF-IDF+SVD 向量分块批量算相似度，≥0.65 即互为同址重复。"""
+    sem = _semantic_matrix(df)
+    if sem is None:
+        return
+    vecs, oids = [], []
+    for i in members:
+        p = pos_map.get(rows[i]["oid"])
+        if p is not None:
+            vecs.append(sem[p])
+            oids.append(i)
+    if len(vecs) < 2:
+        return
+    import numpy as np
+    m = np.vstack(vecs)
+    n = len(oids)
+    chunk = 1024
+    for st in range(0, n, chunk):
+        sims = m[st:st + chunk] @ m.T
+        hits = sims >= 0.65
+        for ci in range(hits.shape[0]):
+            hits[ci, st + ci] = False
+            if hits[ci].any():
+                mask.loc[rows[oids[st + ci]]["idx"]] = True
+
+
+# 跨簇同址候选桶索引（详情页关联工单用：同地址的不同事件工单也算同址重复）
+_GIDX = {"df_id": None, "buckets": None}
+
+
+def _addr_bucket_keys(addr, comm, bld, subj, area):
+    """统一桶键生成（与 _dup_same_place_mask 口径一致，跨簇不带簇维度）。"""
+    keys = []
+    subj = _norm_subject(subj)
+    if addr:
+        keys.append(("a", addr))
+        if comm:
+            keys.append(("c", comm))
+    if comm and bld:
+        keys.append(("cb", comm, bld))
+    if not comm and bld:
+        keys.append(("b", bld))
+    if subj:
+        keys.append(("s", subj, area))
+    return keys
+
+
+def _global_addr_buckets(df):
+    """懒构建全量工单的同址候选桶（一次构建，随 df 缓存）。"""
+    if _GIDX["df_id"] == id(df):
+        return _GIDX["buckets"]
+    buckets = {}
+    try:
+        for t in df.itertuples(index=False):
+            for k in _addr_bucket_keys(
+                    str(getattr(t, "addr_norm", "") or ""),
+                    str(getattr(t, "addr_community", "") or ""),
+                    str(getattr(t, "addr_building", "") or ""),
+                    str(getattr(t, "extracted_subject", "") or ""),
+                    str(getattr(t, "extracted_area", "") or "")):
+                buckets.setdefault(k, []).append(t)
+    except Exception:
+        buckets = {}
+    _GIDX.update(df_id=id(df), buckets=buckets)
+    return buckets
 
 
 def _result_cache_key(*parts) -> str:
@@ -159,7 +415,7 @@ def _build_payload(df, events, info, warnings) -> dict:
             "last_7d": e.get("last_7d", 0),
             "first_seen": e["first_seen"],
             "last_seen": e["last_seen"],
-            "trend": e["trend"],
+            "trend": e.get("trend", ""),
             "samples": [mask_pii(s) if isinstance(s, str) else s for s in e.get("sample_orders", [])],
             "daily": _event_daily(df, e["cluster_id"]),
             "areas": _event_areas(df, e["cluster_id"]),
@@ -234,7 +490,91 @@ def datafiles():
     return {"ok": True, "files": files, "feishu_sources": _load_feishu_sources()}
 
 
+@app.post("/api/clear_cache")
+def clear_cache():
+    """清空分析结果缓存并重置当前会话，下次分析将全量重跑。"""
+    removed = 0
+    try:
+        if os.path.isdir(RESULT_CACHE_DIR):
+            for name in os.listdir(RESULT_CACHE_DIR):
+                if name.startswith("result_") and name.endswith(".pkl"):
+                    os.remove(os.path.join(RESULT_CACHE_DIR, name))
+                    removed += 1
+    except Exception as e:
+        return {"ok": False, "error": "清理失败：%s" % e}
+    STATE.update(df=None, events=None, source_meta=None)
+    _SEM.update(df_id=None, matrix=None)
+    _DUP.update(df_id=None, mask=None)
+    _GIDX.update(df_id=None, buckets=None)
+    return {"ok": True, "removed": removed}
+
+
 FEISHU_SOURCES_PATH = os.path.join(config.OUTPUT_DIR, "feishu_sources.json")
+
+
+# ============================ 流水线实时状态 ============================
+import time as _time
+
+_PIPELINE = {
+    "running": False, "t_start": 0.0, "t_stage": 0.0,
+    "source": "", "stages": [], "error": "", "finished": False,
+}
+_STAGE_DEFS = (
+    ("load", "加载工单数据"),
+    ("clean", "textclean 清洗与实体抽取"),
+    ("cluster", "语义聚类与多频识别"),
+    ("llm", "LLM 判重合并事件簇"),
+    ("profile", "生成事件画像"),
+    ("finish", "结果落盘与会话更新"),
+)
+
+
+def _stage_begin(source):
+    _PIPELINE.update(running=True, t_start=_time.time(), t_stage=_time.time(),
+                     source=str(source or ""), error="", finished=False,
+                     stages=[{"key": k, "name": n, "status": "pending", "ms": 0}
+                             for k, n in _STAGE_DEFS])
+
+
+def _stage_set(key):
+    now = _time.time()
+    for s in _PIPELINE["stages"]:
+        if s["status"] == "running":
+            s["status"] = "done"
+            s["ms"] = int((now - _PIPELINE["t_stage"]) * 1000)
+        if key is not None and s["key"] == key and s["status"] == "pending":
+            s["status"] = "running"
+    _PIPELINE["t_stage"] = now
+
+
+def _stage_skip(key):
+    for s in _PIPELINE["stages"]:
+        if s["key"] == key and s["status"] == "pending":
+            s["status"] = "skip"
+
+
+def _stage_end(error=""):
+    _stage_set(None)
+    for s in _PIPELINE["stages"]:
+        if s["status"] == "pending":
+            s["status"] = "skip"
+    _PIPELINE.update(running=False, finished=True, error=str(error or ""))
+
+
+@app.get("/api/status")
+def pipeline_status():
+    """后台流水线实时状态（前端弹层轮询）。"""
+    return {
+        "ok": True,
+        "running": _PIPELINE["running"],
+        "finished": _PIPELINE["finished"],
+        "source": _PIPELINE["source"],
+        "error": _PIPELINE["error"],
+        "elapsed_ms": (int((_time.time() - _PIPELINE["t_start"]) * 1000)
+                       if _PIPELINE["t_start"] else 0),
+        "stages": _PIPELINE["stages"],
+        "has_result": STATE["df"] is not None,
+    }
 
 
 def _load_feishu_sources():
@@ -360,45 +700,59 @@ async def analyze(
         cache_seed = None
         STATE["source_meta"] = None
         if file is not None and getattr(file, "filename", ""):
+            _stage_begin("上传文件：" + file.filename)
+            _stage_set("load")
             content = await file.read()
             if not content.strip():
+                _stage_end("上传的文件为空。")
                 return {"ok": False, "error": "上传的文件为空。"}
             try:
                 df_raw = _read_upload(file.filename, content)
             except Exception as e:
+                _stage_end("文件读取失败：%s" % e)
                 return {"ok": False, "error": "文件读取失败：%s。请确认为有效 CSV/Excel。" % e}
             df = loader.load_orders(df_raw)
         elif feishu_url:
+            _stage_begin("飞书多维表格")
+            _stage_set("load")
             try:
                 df_raw, meta = feishu_loader.fetch_records(feishu_url)
             except Exception as e:
+                _stage_end("飞书数据拉取失败：%s" % e)
                 return {"ok": False, "error": "飞书数据拉取失败：%s" % e}
             STATE["source_meta"] = meta
             cache_seed = "feishu|%s|%s|%d" % (meta["app_token"], meta["table_id"], meta["rows"])
             warnings.append("已从飞书多维表格加载 %d 条工单（%d 个字段）。"
                             % (meta["rows"], len(meta["fields"])))
-            df = loader.load_orders(df_raw)
         elif datafile:
             # 防路径穿越：只允许 data/input 下的文件名
             safe_name = os.path.basename(datafile)
+            _stage_begin("本地文件：" + safe_name)
+            _stage_set("load")
             path = os.path.join(config.INPUT_DIR, safe_name)
             if not os.path.exists(path):
+                _stage_end("本地数据文件不存在：%s" % safe_name)
                 return {"ok": False, "error": "本地数据文件不存在：%s" % safe_name}
             try:
                 df = loader.load_orders_cached(path)
             except Exception as e:
+                _stage_end("本地文件读取失败：%s" % e)
                 return {"ok": False, "error": "本地文件读取失败：%s" % e}
             st_info = os.stat(path)
             cache_seed = "file|%s|%d|%d" % (safe_name, int(st_info.st_mtime), st_info.st_size)
         else:
+            _stage_begin("内置样例数据")
+            _stage_set("load")
             sample = os.path.join(config.INPUT_DIR, "sample.csv")
             if not os.path.exists(sample):
+                _stage_end("未上传文件，且内置样例数据缺失。")
                 return {"ok": False, "error": "未上传文件，且内置样例数据缺失。"}
             df_raw = pd.read_csv(sample)
             df = loader.load_orders(df_raw)
             cache_seed = "sample"
 
         if df.empty:
+            _stage_end("未读取到有效工单")
             return {"ok": False, "error": "未读取到有效工单：请检查文件是否为空或诉求内容列缺失。"}
 
         # ---- 分析范围：全部 / 近30天 / 近60天（以数据集最近时间为基准） ----
@@ -416,37 +770,57 @@ async def analyze(
         cache_key = None
         if cache_seed:
             cache_key = _result_cache_key(
-                cache_seed, scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
+                cache_seed + "|tcm1.1", scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
             cached = _load_result_cache(cache_key)
             if cached is not None:
                 STATE["df"], STATE["events"] = cached["df"], cached["events"]
+                _SEM.update(df_id=None, matrix=None)
+                _DUP.update(df_id=None, mask=None)
+                _GIDX.update(df_id=None, buckets=None)
                 warnings.append("已命中分析缓存，结果与上次相同参数分析一致。")
+                _stage_end("命中分析缓存，秒级返回")
                 return {"ok": True, "payload": _build_payload(
                     cached["df"], cached["events"], cached["info"], warnings)}
 
-        # ---- 流水线（与 Streamlit 版完全一致） ----
-        df = normalizer.normalize_orders(df)
-        df = entity_extractor.extract_entities(df)
-        df, info = cluster_mod.cluster_orders(
-            df, eps=eps, min_samples=min_samples, use_embedding=use_embedding)
-        warnings.extend(info.get("messages", []))
-
-        if use_llm:
-            df, llm_info = llm_dedup.merge_clusters_by_llm(df, llm_key=llm_key)
-            warnings.extend(llm_info.get("messages", []))
-
-        df, _ = classifier.classify_multi_freq(df, freq_threshold=freq_threshold)
-
-        try:
+        # ---- 流水线（清洗/抽取已切换至 textclean_module；线程池执行避免阻塞状态轮询） ----
+        def _pipeline_body(df, eps, min_samples, use_embedding, use_llm, llm_key, freq_threshold):
+            info, llm_msgs = {}, []
+            _stage_set("clean")
+            df = _run_textclean(df)
+            _stage_set("cluster")
+            df, info = cluster_mod.cluster_orders(
+                df, eps=eps, min_samples=min_samples, use_embedding=use_embedding)
+            if use_llm:
+                _stage_set("llm")
+                df, llm_info = llm_dedup.merge_clusters_by_llm(df, llm_key=llm_key)
+                llm_msgs = llm_info.get("messages", [])
+            else:
+                _stage_skip("llm")
+            df, _ = classifier.classify_multi_freq(df, freq_threshold=freq_threshold)
+            _stage_set("profile")
             events = event_profiler.build_event_profiles(df)
-        except Exception as e:
-            events, warnings = [], warnings + ["事件画像生成失败：%s" % e]
+            return df, events, info, llm_msgs
 
+        from fastapi.concurrency import run_in_threadpool
+        try:
+            df, events, info, llm_msgs = await run_in_threadpool(
+                _pipeline_body, df, eps, min_samples, use_embedding, use_llm, llm_key, freq_threshold)
+            warnings.extend(info.get("messages", []))
+            warnings.extend(llm_msgs)
+        except Exception as e:
+            events, info, warnings = [], {}, warnings + ["分析流水线失败：%s" % e]
+
+        _stage_set("finish")
         STATE["df"], STATE["events"] = df, events
+        _SEM.update(df_id=None, matrix=None)
+        _DUP.update(df_id=None, mask=None)
+        _GIDX.update(df_id=None, buckets=None)
         if cache_key:
             _save_result_cache(cache_key, {"df": df, "events": events, "info": info})
+        _stage_end()
         return {"ok": True, "payload": _build_payload(df, events, info, warnings)}
     except Exception as e:
+        _stage_end("分析过程异常：%s" % e)
         return {"ok": False, "error": "分析过程异常：%s" % e}
 
 
@@ -583,8 +957,10 @@ def overview():
         "daily_all": daily_all,
         "daily_by_area": daily_by_area,
         "multi_orders": int(multi_mask.sum()),
+        "dup_orders": int(_dup_same_place_mask(df).sum()),
         "subjects": _top_subjects(df, 30),
         "top_subjects": _top_subjects(df, 30),
+        "categories": _top_categories(df, 30),
     }
 
 
@@ -600,10 +976,22 @@ def _top_subjects(df, top_n=30):
     return [{"subject": str(k), "count": int(v)} for k, v in vc.items()]
 
 
+def _top_categories(df, top_n=30):
+    """全部工单中的高频诉求分类（textclean 事件类型）。"""
+    if "extracted_event" not in df.columns:
+        return []
+    s = df["extracted_event"].astype(str).str.strip()
+    s = s[(s != "") & (s != "nan")]
+    if s.empty:
+        return []
+    vc = s.value_counts().head(top_n)
+    return [{"category": str(k), "count": int(v)} for k, v in vc.items()]
+
+
 @app.get("/api/orders")
 def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
-           subject: str = "", multi: str = "",
-           event: str = "", sort: str = "default"):
+           subject: str = "", multi: str = "", category: str = "",
+           event: str = "", sort: str = "default", dup: str = ""):
     """工单工作台：全量工单搜索 / 筛选 / 排序 / 分页（服务端处理，支撑十万级数据）。"""
     df = STATE["df"]
     if df is None:
@@ -624,6 +1012,11 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
         view = view[view.get("extracted_subject", pd.Series(index=view.index)).astype(str) == subject]
     if multi in ("1", "0"):
         view = view[view["is_multi_freq"].astype(bool) == (multi == "1")]
+    if dup == "1":
+        dm = _dup_same_place_mask(df)
+        view = view[dm.loc[view.index].astype(bool)]
+    if category:
+        view = view[view.get("extracted_event", pd.Series(index=view.index)).astype(str) == category]
     if event:
         ev = next((e for e in (STATE["events"] or []) if e["event_id"] == event), None)
         view = view[view["cluster_id"] == ev["cluster_id"]] if ev else view.iloc[0:0]
@@ -672,17 +1065,71 @@ def order_detail(oid: str):
     cmap = _cluster_event_map()
     ev = cmap.get(cid)
 
-    # 关联工单（同事件簇，最多 20 条）
-    mates = []
+    # 关联工单：同簇同地点（含语义兜底）+ 跨簇同地点（地址/主体硬信号），
+    # 判定均为纯对称函数 → A↔B 必互相命中；全量返回不截断
+    mates_all = []
+    cur = {
+        "addr": str(r.get("addr_norm", "") or ""),
+        "comm": str(r.get("addr_community", "") or ""),
+        "bld": str(r.get("addr_building", "") or ""),
+        "subj": str(r.get("extracted_subject", "") or ""),
+        "area": str(r.get("extracted_area", "") or ""),
+    }
+    matched = {oid}
+
+    def _mate_row(t):
+        return {
+            "order_id": str(t.order_id),
+            "content": mask_pii(truncate(t.content, 70)),
+            "area": str(getattr(t, "extracted_area", "") or ""),
+            "time": _fmt_time(t.submit_time),
+        }
+
     if cid != -1:
-        same = df[(df["cluster_id"] == cid) & (df["order_id"].astype(str) != oid)].head(20)
+        cur_no_addr = not any((cur["addr"], cur["comm"], cur["bld"]))
+        sem = _semantic_matrix(df) if cur_no_addr else None
+        pos = ({str(v): i for i, v in enumerate(df["order_id"].astype(str))}
+               if sem is not None else None)
+        my_pos = pos.get(oid) if pos else None
+        same = df[(df["cluster_id"] == cid) & (df["order_id"].astype(str) != oid)]
         for m in same.itertuples(index=False):
-            mates.append({
-                "order_id": str(m.order_id),
-                "content": mask_pii(truncate(m.content, 70)),
+            mb = {
+                "addr": str(getattr(m, "addr_norm", "") or ""),
+                "comm": str(getattr(m, "addr_community", "") or ""),
+                "bld": str(getattr(m, "addr_building", "") or ""),
+                "subj": str(getattr(m, "extracted_subject", "") or ""),
                 "area": str(getattr(m, "extracted_area", "") or ""),
-                "time": _fmt_time(m.submit_time),
-            })
+            }
+            sim = None
+            if sem is not None and my_pos is not None and \
+                    not any((mb["addr"], mb["comm"], mb["bld"])):
+                mp = pos.get(str(m.order_id))
+                if mp is not None:
+                    sim = float((sem[my_pos] * sem[mp]).sum())  # 向量已L2归一化，点积即余弦
+            if _is_same_place(cur, mb, sim):
+                matched.add(str(m.order_id))
+                mates_all.append(_mate_row(m))
+
+    # 跨簇同址：同地址的不同事件工单（sim=None → 语义兜底仅限同簇，跨簇只用硬信号）
+    my_keys = _addr_bucket_keys(cur["addr"], cur["comm"], cur["bld"], cur["subj"], cur["area"])
+    for k in my_keys:
+        for t in _global_addr_buckets(df).get(k, ()):
+            toid = str(t.order_id)
+            if toid in matched:
+                continue
+            tb = {
+                "addr": str(getattr(t, "addr_norm", "") or ""),
+                "comm": str(getattr(t, "addr_community", "") or ""),
+                "bld": str(getattr(t, "addr_building", "") or ""),
+                "subj": str(getattr(t, "extracted_subject", "") or ""),
+                "area": str(getattr(t, "extracted_area", "") or ""),
+            }
+            if _is_same_place(cur, tb):
+                matched.add(toid)
+                mates_all.append(_mate_row(t))
+
+    mates_all.sort(key=lambda x: x["time"], reverse=True)
+    mates = mates_all
 
     # 判断依据：当前工单与事件簇代表值的一致性因子（全部可验证，不伪造）
     basis = []
@@ -716,6 +1163,10 @@ def order_detail(oid: str):
             if len(similar) >= 3:
                 break
 
+    detail_addr = str(r.get("addr_norm", "") or "") or " ".join(
+        p for p in (str(r.get("addr_community", "") or ""),
+                    str(r.get("addr_building", "") or "")) if p)
+
     return {
         "ok": True,
         "order": {
@@ -730,6 +1181,7 @@ def order_detail(oid: str):
             "subject": str(getattr(r, "extracted_subject", "") or ""),
             "event": str(getattr(r, "extracted_event", "") or ""),
             "area": str(getattr(r, "extracted_area", "") or ""),
+            "detail_addr": detail_addr,
             "normalized": mask_pii(str(getattr(r, "normalized_content", "") or "")),
         },
         "cluster": {
@@ -739,6 +1191,7 @@ def order_detail(oid: str):
             "is_multi": bool(r.is_multi_freq),
         },
         "mates": mates,
+        "mates_total": len(mates_all),
         "basis": basis,
         "similar": similar,
     }
