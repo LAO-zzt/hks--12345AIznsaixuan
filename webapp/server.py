@@ -456,34 +456,7 @@ async def feishu(body: dict):
     return {"ok": ok, "message": msg}
 
 
-# ============================ 三页业务结构：总览 / 工作台 / 详情 / 核查 ============================
-
-REVIEW_FILE = os.path.join(config.OUTPUT_DIR, "reviews.json")
-REVIEWS = {}
-
-
-def _load_reviews():
-    """读取人工核查状态（持久化，重启不丢）。"""
-    global REVIEWS
-    try:
-        with open(REVIEW_FILE, "r", encoding="utf-8") as f:
-            import json as _json
-            REVIEWS = _json.load(f)
-    except Exception:
-        REVIEWS = {}
-
-
-def _save_reviews():
-    try:
-        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-        with open(REVIEW_FILE, "w", encoding="utf-8") as f:
-            import json as _json
-            _json.dump(REVIEWS, f, ensure_ascii=False, indent=1)
-    except Exception:
-        pass
-
-
-_load_reviews()
+# ============================ 三页业务结构：总览 / 工作台 / 详情 ============================
 
 _LEVEL_RANK = {"高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3, "": 9}
 
@@ -513,22 +486,15 @@ def boot():
 
 @app.get("/api/overview")
 def overview():
-    """全局总览聚合：数据源信息 + 核查统计 + 区域聚合 + 全局日趋势（全部实时计算）。"""
+    """全局总览聚合：数据源信息 + 区域聚合 + 全局日趋势（全部实时计算）。"""
     df = STATE["df"]
     if df is None:
         return {"ok": False, "error": "暂无分析结果。"}
     cmap = _cluster_event_map()
     high_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == "高关注")
 
-    # 核查统计：待核查 = 高关注事件工单中尚未人工核查的数量
     multi_mask = df.get("is_multi_freq", pd.Series([False] * len(df), index=df.index)).astype(bool)
     high_mask = df["cluster_id"].isin(high_clusters) if "cluster_id" in df.columns else multi_mask.iloc[0:0]
-    high_ids = set(df.loc[high_mask, "order_id"].astype(str))
-    confirmed = sum(1 for v in REVIEWS.values() if v.get("status") == "已确认")
-    rejected = sum(1 for v in REVIEWS.values() if v.get("status") == "误判")
-    flagged = sum(1 for v in REVIEWS.values() if v.get("status") == "重点")
-    reviewed_in_high = sum(1 for oid in REVIEWS if oid in high_ids)
-    pending = max(0, len(high_ids) - reviewed_in_high)
 
     # 区域聚合（带坐标，供首页地图四档切换）
     from utils.helpers import load_area_coords
@@ -554,6 +520,11 @@ def overview():
         daily = t.dt.date.value_counts().sort_index()
         daily_all = [{"date": str(k), "count": int(v)} for k, v in daily.items()]
 
+    # 高频主体（全部工单统计，前30）
+    subj_col = df.get("extracted_subject", pd.Series([""] * len(df), index=df.index)).astype(str).str.strip()
+    subj_vc = subj_col[subj_col != ""].value_counts().head(30)
+    top_subjects = [{"subject": k, "count": int(v)} for k, v in subj_vc.items()]
+
     return {
         "ok": True,
         "source": {
@@ -561,17 +532,16 @@ def overview():
             "time_min": t.min().strftime("%Y-%m-%d") if not t.empty else None,
             "time_max": t.max().strftime("%Y-%m-%d") if not t.empty else None,
         },
-        "review": {"pending": pending, "confirmed": confirmed,
-                   "rejected": rejected, "flagged": flagged},
         "areas": area_rows,
         "daily_all": daily_all,
         "multi_orders": int(multi_mask.sum()),
+        "top_subjects": top_subjects,
     }
 
 
 @app.get("/api/orders")
 def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
-           multi: str = "", level: str = "", review: str = "",
+           subject: str = "", multi: str = "", level: str = "",
            event: str = "", sort: str = "default"):
     """工单工作台：全量工单搜索 / 筛选 / 排序 / 分页（服务端处理，支撑十万级数据）。"""
     df = STATE["df"]
@@ -589,6 +559,8 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
         view = view[mask]
     if area:
         view = view[view.get("extracted_area", pd.Series(index=view.index)).astype(str) == area]
+    if subject:
+        view = view[view.get("extracted_subject", pd.Series(index=view.index)).astype(str) == subject]
     if multi in ("1", "0"):
         view = view[view["is_multi_freq"].astype(bool) == (multi == "1")]
     if level:
@@ -597,25 +569,17 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
     if event:
         ev = next((e for e in (STATE["events"] or []) if e["event_id"] == event), None)
         view = view[view["cluster_id"] == ev["cluster_id"]] if ev else view.iloc[0:0]
-    if review == "待核查":
-        high_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == "高关注")
-        view = view[view["cluster_id"].isin(high_clusters) &
-                    ~view["order_id"].astype(str).isin(set(REVIEWS.keys()))]
-    elif review:
-        ids = set(oid for oid, v in REVIEWS.items() if v.get("status") == review)
-        view = view[view["order_id"].astype(str).isin(ids)]
 
-    # 排序（默认：待核查+高优先优先；时间倒序兜底）
+    # 排序（默认：高优先优先；时间倒序兜底）
     lv_of = view["cluster_id"].map(lambda c: _LEVEL_RANK.get(cmap.get(c, {}).get("risk_level", ""), 9))
-    reviewed_flag = view["order_id"].astype(str).isin(set(REVIEWS.keys())).astype(int)
     if sort == "freq":
         view = view.assign(_a=lv_of, _b=view["cluster_size"]).sort_values(
             ["_a", "_b"], ascending=[True, False])
     elif sort == "time":
         view = view.sort_values("submit_time", ascending=False, na_position="last")
-    else:  # default = 待核查 + 高优先优先
-        view = view.assign(_r=reviewed_flag, _a=lv_of, _b=view["cluster_size"]).sort_values(
-            ["_r", "_a", "_b"], ascending=[True, True, False])
+    else:
+        view = view.assign(_a=lv_of, _b=view["cluster_size"]).sort_values(
+            ["_a", "_b"], ascending=[True, False])
 
     total = int(len(view))
     page = max(1, page)
@@ -626,18 +590,17 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
     for r in part.itertuples(index=False):
         ev = cmap.get(r.cluster_id)
         oid = str(r.order_id)
-        rv = REVIEWS.get(oid)
         rows.append({
             "order_id": oid,
             "title": str(getattr(r, "title", "") or "")[:60],
             "content": truncate(r.content, 60),
             "area": str(getattr(r, "extracted_area", "") or ""),
+            "subject": str(getattr(r, "extracted_subject", "") or ""),
             "event": ev.get("event_type", "") if ev else "",
             "event_id": ev.get("event_id", "") if ev else "",
             "size": int(r.cluster_size),
             "multi": bool(r.is_multi_freq),
             "level": ev.get("risk_level", "") if ev else "",
-            "review": rv.get("status", "") if rv else "",
             "time": _fmt_time(r.submit_time),
         })
     return {"ok": True, "total": total, "page": page, "size": size, "rows": rows}
@@ -701,7 +664,6 @@ def order_detail(oid: str):
             if len(similar) >= 3:
                 break
 
-    rv = REVIEWS.get(oid)
     return {
         "ok": True,
         "order": {
@@ -731,33 +693,7 @@ def order_detail(oid: str):
         "mates": mates,
         "basis": basis,
         "similar": similar,
-        "review": rv or None,
     }
-
-
-@app.post("/api/review")
-async def review(body: dict):
-    """人工核查：批量标注 已确认/误判/待定/重点，写入操作记录并持久化。"""
-    ids = body.get("ids") or []
-    status = str(body.get("status", "")).strip()
-    if status not in ("已确认", "误判", "待定", "重点", ""):
-        return {"ok": False, "message": "无效状态。"}
-    if not ids:
-        return {"ok": False, "message": "未选择工单。"}
-    import datetime
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    for oid in ids:
-        oid = str(oid)
-        if status == "":
-            REVIEWS.pop(oid, None)
-            continue
-        entry = REVIEWS.get(oid, {"log": []})
-        entry["status"] = status
-        entry.setdefault("log", []).append({"ts": ts, "action": status})
-        entry["log"] = entry["log"][-20:]
-        REVIEWS[oid] = entry
-    _save_reviews()
-    return {"ok": True, "message": "已标记 %d 条工单为「%s」" % (len(ids), status)}
 
 
 if __name__ == "__main__":

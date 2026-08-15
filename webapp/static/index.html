@@ -182,9 +182,9 @@
   }
   .wb-chip i { cursor: pointer; font-style: normal; opacity: .8; }
   .wb-chip i:hover { opacity: 1; color: #fff; }
-  .wb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .wb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .wb-toolbar .tool-input { width: 260px; }
-  .wb-toolbar .spacer { flex: 1; }
+  .wb-actions { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .pagination { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--muted); }
   .pagination .btn { padding: 5px 14px; }
   .batch-bar {
@@ -411,13 +411,14 @@
   <!-- ================= 第二页 工单工作台 ================= -->
   <section id="page-workbench" class="hidden">
     <div class="card">
-      <h2>工单工作台<span class="h-note">搜索 / 筛选 / 排序 / 批量核查</span></h2>
+      <h2>工单工作台<span class="h-note">搜索 / 筛选 / 排序</span></h2>
       <div class="wb-chips" id="wb-chips"></div>
       <div class="wb-toolbar">
         <input class="tool-input" id="wb-q" placeholder="搜索工单编号 / 标题 / 诉求内容…">
         <select class="tool-select" id="wb-area"><option value="">全部区域</option></select>
+        <select class="tool-select" id="wb-subject"><option value="">全部主体</option></select>
         <select class="tool-select" id="wb-multi">
-          <option value="">重复状态</option>
+          <option value="">全部</option>
           <option value="1">多频工单</option>
           <option value="0">非多频</option>
         </select>
@@ -427,39 +428,23 @@
           <option value="中关注">中关注</option>
           <option value="一般">一般</option>
         </select>
-        <select class="tool-select" id="wb-review">
-          <option value="">核查状态</option>
-          <option value="待核查">待核查</option>
-          <option value="已确认">已确认</option>
-          <option value="误判">误判</option>
-          <option value="重点">重点</option>
-          <option value="待定">待定</option>
-        </select>
         <select class="tool-select" id="wb-sort">
-          <option value="default">待核查+高优先优先</option>
+          <option value="default">默认（高优先优先）</option>
           <option value="freq">按频次</option>
           <option value="time">按时间最新</option>
         </select>
-        <span class="spacer"></span>
+      </div>
+      <div class="wb-actions">
         <a class="btn small" href="/api/download/csv">导出 CSV</a>
         <a class="btn small" href="/api/download/excel">导出 Excel</a>
         <button class="btn small" id="btn-feishu">推送飞书</button>
-      </div>
-      <div class="batch-bar hidden" id="batch-bar">
-        <span id="batch-count">已选 0 条</span>
-        <button class="btn small" onclick="batchReview('已确认')">标记已确认</button>
-        <button class="btn small danger" onclick="batchReview('误判')">标记误判</button>
-        <button class="btn small" onclick="batchReview('重点')">标记重点</button>
-        <button class="btn small" onclick="batchReview('待定')">待定</button>
-        <button class="btn small" onclick="batchReview('')">清除标记</button>
       </div>
       <div>
         <table class="clickable" id="wb-table">
           <thead>
             <tr>
-              <th style="width:34px"><input type="checkbox" id="wb-checkall"></th>
-              <th>工单号</th><th>标题 / 诉求</th><th>区域</th><th>事件</th>
-              <th>频次</th><th>风险等级</th><th>核查状态</th><th>时间</th>
+              <th>工单号</th><th>标题 / 诉求</th><th>区域</th><th>主体</th><th>事件</th>
+              <th>频次</th><th>风险等级</th><th>时间</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -585,7 +570,7 @@
 <script>
 /* ================= 全局状态与工具 ================= */
 const state = { payload: null, overview: null, evSelected: -1, mapMode: "total", selFile: null };
-const wb = { page: 1, size: 50, q: "", area: "", multi: "", level: "", review: "", event: "", sort: "default", selected: new Set() };
+const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", level: "", event: "", sort: "default" };
 const $ = (id) => document.getElementById(id);
 
 function esc(s) {
@@ -602,11 +587,6 @@ function toast(msg, isErr) {
 function riskBadge(level) {
   const map = { "高关注": "b-red", "中关注": "b-amber", "一般": "b-green", "需人工研判": "b-gray" };
   return '<span class="badge ' + (map[level] || "b-gray") + '">' + esc(level || "—") + "</span>";
-}
-function reviewBadge(status) {
-  if (!status) return '<span class="badge b-blue">待核查</span>';
-  const map = { "已确认": "b-green", "误判": "b-red", "重点": "b-amber", "待定": "b-gray" };
-  return '<span class="badge ' + (map[status] || "b-gray") + '">' + esc(status) + "</span>";
 }
 function trendSpan(t) {
   if (t === "上升") return '<span class="trend-up">▲ 上升</span>';
@@ -860,15 +840,11 @@ function renderOverview() {
     '<span class="link" onclick="openDrawer()">⚙ 更换数据源 / 调整策略</span>';
 
   // KPI（全部可点击进工作台）
-  const rv = ov ? ov.review : { pending: 0, confirmed: 0, rejected: 0 };
   const multi = ov ? ov.multi_orders : 0;
   $("kpi-row").innerHTML =
     kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({})) +
     kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1" })) +
-    kpiCard(p.kpis.high_events, "高关注事件", "k-red", () => goWorkbench({ level: "高关注" })) +
-    kpiCard(rv.pending.toLocaleString(), "待核查", "k-amber", () => goWorkbench({ review: "待核查" })) +
-    kpiCard(rv.confirmed.toLocaleString(), "已确认", "k-green", () => goWorkbench({ review: "已确认" })) +
-    kpiCard(rv.rejected.toLocaleString(), "误判", "", () => goWorkbench({ review: "误判" }));
+    kpiCard(p.kpis.high_events, "高关注事件", "k-red", () => goWorkbench({ level: "高关注" }));
 
   // 区域筛选选项
   const areaSel = $("f-area");
@@ -1128,12 +1104,21 @@ async function renderWorkbench() {
       areaSel.appendChild(o);
     });
   }
+  // 主体选项
+  const subjSel = $("wb-subject");
+  if (subjSel.options.length <= 1 && state.overview) {
+    (state.overview.top_subjects || []).forEach(s => {
+      const o = document.createElement("option");
+      o.value = s.subject; o.textContent = s.subject + " (" + s.count + ")";
+      subjSel.appendChild(o);
+    });
+  }
   // 控件同步
   $("wb-q").value = wb.q;
   $("wb-area").value = wb.area;
+  $("wb-subject").value = wb.subject;
   $("wb-multi").value = wb.multi;
   $("wb-level").value = wb.level;
-  $("wb-review").value = wb.review;
   $("wb-sort").value = wb.sort;
 
   // 筛选条件 chips
@@ -1141,10 +1126,10 @@ async function renderWorkbench() {
   const evName = wb.event && state.payload
     ? ((state.payload.events.find(e => e.event_id === wb.event) || {}).type || wb.event) : "";
   if (wb.area) chips.push(["area", "区域：" + wb.area]);
+  if (wb.subject) chips.push(["subject", "主体：" + wb.subject]);
   if (wb.multi === "1") chips.push(["multi", "重复状态：多频"]);
   if (wb.multi === "0") chips.push(["multi", "重复状态：非多频"]);
   if (wb.level) chips.push(["level", "风险等级：" + wb.level]);
-  if (wb.review) chips.push(["review", "核查状态：" + wb.review]);
   if (wb.event) chips.push(["event", "事件：" + evName]);
   if (wb.q) chips.push(["q", "关键词：" + wb.q]);
   $("wb-chips").innerHTML = chips.length
@@ -1154,42 +1139,28 @@ async function renderWorkbench() {
     : "";
 
   const params = new URLSearchParams({
-    page: wb.page, size: wb.size, q: wb.q, area: wb.area, multi: wb.multi,
-    level: wb.level, review: wb.review, event: wb.event, sort: wb.sort,
+    page: wb.page, size: wb.size, q: wb.q, area: wb.area, subject: wb.subject,
+    multi: wb.multi, level: wb.level, event: wb.event, sort: wb.sort,
   });
   const d = await (await fetch("/api/orders?" + params)).json();
   if (!d.ok) { toast(d.error || "加载失败", true); return; }
 
   $("wb-table").querySelector("tbody").innerHTML = d.rows.map(r =>
     '<tr data-oid="' + esc(r.order_id) + '">' +
-    '<td><input type="checkbox" class="wb-check" value="' + esc(r.order_id) + '"' +
-      (wb.selected.has(r.order_id) ? " checked" : "") + '></td>' +
     "<td>" + esc(r.order_id) + "</td>" +
     '<td><div class="ev-name">' + esc(r.title || "—") + '</div><div class="ev-sub">' + esc(r.content) + "</div></td>" +
     "<td>" + esc(r.area || "—") + "</td>" +
+    "<td>" + esc(r.subject || "—") + "</td>" +
     "<td>" + (r.event ? esc(r.event) + ' <span class="badge b-gray">' + esc(r.event_id) + "</span>" : "—") + "</td>" +
     "<td>" + (r.multi ? "<b>" + r.size + "</b>" : "1") + "</td>" +
     "<td>" + (r.level ? riskBadge(r.level) : "—") + "</td>" +
-    "<td>" + reviewBadge(r.review) + "</td>" +
     "<td>" + esc(r.time || "—") + "</td>" +
     "</tr>").join("");
 
-  // 行点击进详情（复选框除外）
+  // 行点击进详情
   $("wb-table").querySelectorAll("tbody tr").forEach(tr => {
-    tr.addEventListener("click", ev => {
-      if (ev.target.tagName === "INPUT") return;
-      goOrder(tr.dataset.oid);
-    });
+    tr.addEventListener("click", () => goOrder(tr.dataset.oid));
   });
-  // 复选框
-  $("wb-table").querySelectorAll(".wb-check").forEach(cb => {
-    cb.addEventListener("change", () => {
-      if (cb.checked) wb.selected.add(cb.value);
-      else wb.selected.delete(cb.value);
-      updateBatchBar();
-    });
-  });
-  updateBatchBar();
 
   const pages = Math.max(1, Math.ceil(d.total / wb.size));
   $("wb-pageinfo").textContent = "第 " + d.page + " / " + pages + " 页";
@@ -1197,46 +1168,18 @@ async function renderWorkbench() {
   $("wb-prev").disabled = d.page <= 1;
   $("wb-next").disabled = d.page >= pages;
 }
-function updateBatchBar() {
-  const bar = $("batch-bar");
-  if (wb.selected.size > 0) {
-    bar.classList.remove("hidden");
-    $("batch-count").textContent = "已选 " + wb.selected.size + " 条";
-  } else bar.classList.add("hidden");
-}
 function clearWbFilter(key) {
-  if (key === "all") { wb.area = ""; wb.multi = ""; wb.level = ""; wb.review = ""; wb.event = ""; wb.q = ""; }
+  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.level = ""; wb.event = ""; wb.q = ""; }
   else if (key === "q") wb.q = "";
   else wb[key] = "";
   wb.page = 1;
   renderWorkbench();
 }
-async function batchReview(status) {
-  if (!wb.selected.size) return;
-  const r = await (await fetch("/api/review", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: [...wb.selected], status }),
-  })).json();
-  toast(r.message, !r.ok);
-  if (r.ok) {
-    wb.selected.clear();
-    await loadOverview();
-    renderWorkbench();
-  }
-}
-$("wb-checkall").addEventListener("change", function () {
-  $("wb-table").querySelectorAll(".wb-check").forEach(cb => {
-    cb.checked = this.checked;
-    if (this.checked) wb.selected.add(cb.value);
-    else wb.selected.delete(cb.value);
-  });
-  updateBatchBar();
-});
 $("wb-q").addEventListener("input", () => {
   clearTimeout(wbTimer);
   wbTimer = setTimeout(() => { wb.q = $("wb-q").value.trim(); wb.page = 1; renderWorkbench(); }, 400);
 });
-[["wb-area", "area"], ["wb-multi", "multi"], ["wb-level", "level"], ["wb-review", "review"], ["wb-sort", "sort"]].forEach(pair => {
+[["wb-area", "area"], ["wb-subject", "subject"], ["wb-multi", "multi"], ["wb-level", "level"], ["wb-sort", "sort"]].forEach(pair => {
   $(pair[0]).addEventListener("change", () => { wb[pair[1]] = $(pair[0]).value; wb.page = 1; renderWorkbench(); });
 });
 $("wb-prev").addEventListener("click", () => { if (wb.page > 1) { wb.page--; renderWorkbench(); } });
@@ -1261,7 +1204,6 @@ async function renderOrder(oid) {
   }
   const o = d.order, ai = d.ai, cl = d.cluster;
   const needFill = '<span class="need-fill">待补充（数据源未提供该字段）</span>';
-  const rv = d.review;
 
   // 判断依据 chips
   const basisHtml = (d.basis || []).map(b => {
@@ -1276,12 +1218,6 @@ async function renderOrder(oid) {
     '<span class="od-id">' + esc(o.order_id) + "</span>" +
     (cl.is_multi ? '<span class="badge b-red">多频工单 · 共 ' + cl.frequency + " 条</span>" : '<span class="badge b-gray">非多频</span>') +
     (cl.level ? riskBadge(cl.level) : "") +
-    reviewBadge(rv ? rv.status : "") +
-    '<span class="spacer"></span>' +
-    '<button class="btn small" onclick="orderReview(\'' + esc(o.order_id) + '\',\'已确认\')">确认重复</button>' +
-    '<button class="btn small danger" onclick="orderReview(\'' + esc(o.order_id) + '\',\'误判\')">误判</button>' +
-    '<button class="btn small" onclick="orderReview(\'' + esc(o.order_id) + '\',\'待定\')">暂不确定</button>' +
-    '<button class="btn small" onclick="orderReview(\'' + esc(o.order_id) + '\',\'重点\')">标记重点</button>' +
   "</div>" +
 
   '<div class="od-grid">' +
@@ -1329,39 +1265,21 @@ async function renderOrder(oid) {
       : "") +
   "</div>" +
 
-  '<div class="od-grid">' +
-    '<div class="card"><h2>关联工单<span class="h-note">点击进入对应工单</span></h2>' +
-      (d.mates.length
-        ? '<div class="scroll-y"><table class="clickable"><thead><tr><th>工单号</th><th>诉求内容</th><th>区域</th><th>时间</th></tr></thead><tbody>' +
-          d.mates.map(m =>
-            '<tr onclick="goOrder(\'' + esc(m.order_id) + '\')">' +
-            "<td>" + esc(m.order_id) + "</td>" +
-            "<td>" + esc(m.content) + "</td>" +
-            "<td>" + esc(m.area || "—") + "</td>" +
-            "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
-          "</tbody></table></div>"
-        : '<div class="muted" style="padding:20px">无其他关联工单。</div>') +
-    "</div>" +
-
-    '<div class="card"><h2>核查状态与处理记录</h2>' +
-      '<div style="margin-bottom:10px">当前状态：' + reviewBadge(rv ? rv.status : "") + "</div>" +
-      (rv && rv.log && rv.log.length
-        ? '<div class="review-log">' + rv.log.slice().reverse().map(l =>
-            "· " + esc(l.ts) + "　标记为「" + esc(l.action) + "」").join("<br>") + "</div>"
-        : '<div class="muted">暂无处理记录。请使用右上角按钮进行人工核查。</div>') +
-    "</div>" +
+  '<div class="card"><h2>关联工单<span class="h-note">点击进入对应工单</span></h2>' +
+    (d.mates.length
+      ? '<div class="scroll-y"><table class="clickable"><thead><tr><th>工单号</th><th>诉求内容</th><th>区域</th><th>时间</th></tr></thead><tbody>' +
+        d.mates.map(m =>
+          '<tr onclick="goOrder(\'' + esc(m.order_id) + '\')">' +
+          "<td>" + esc(m.order_id) + "</td>" +
+          "<td>" + esc(m.content) + "</td>" +
+          "<td>" + esc(m.area || "—") + "</td>" +
+          "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
+        "</tbody></table></div>"
+      : '<div class="muted" style="padding:20px">无其他关联工单。</div>') +
   "</div>";
 }
 function field(k, v) {
   return '<div><div class="k">' + k + '</div><div class="v">' + v + "</div></div>";
-}
-async function orderReview(oid, status) {
-  const r = await (await fetch("/api/review", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: [oid], status }),
-  })).json();
-  toast(r.message, !r.ok);
-  if (r.ok) { await loadOverview(); renderOrder(oid); }
 }
 
 /* ================= 启动 ================= */
