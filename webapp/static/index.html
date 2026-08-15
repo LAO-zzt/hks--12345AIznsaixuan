@@ -87,22 +87,25 @@
   .btn.small { padding: 7px 14px; font-size: 13px; }
   .btn:disabled { opacity: .55; cursor: not-allowed; }
 
-  /* ---------- 页面① 配置 ---------- */
-  .config-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: stretch; }
-  .upload-card { display: flex; flex-direction: column; }
+  /* ---------- 页面① 智能分析入口 ---------- */
+  .intro-note {
+    max-width: 860px; margin: 0 auto 18px; font-size: 12.5px; color: var(--muted);
+    line-height: 1.7; text-align: center;
+  }
+  .config-flow { max-width: 860px; margin: 0 auto; }
+  .flow-card { margin-bottom: 18px; }
+  .flow-card h2 { margin-bottom: 14px; }
+
   #drop-zone {
     border: 1.5px dashed #33456b; border-radius: 10px;
-    padding: 40px 20px; text-align: center; cursor: pointer;
+    padding: 36px 20px; text-align: center; cursor: pointer;
     transition: all .15s ease; background: rgba(61, 126, 255, .03);
-    flex: 1; display: flex; flex-direction: column; justify-content: center;
-    min-height: 300px;
   }
   #drop-zone:hover, #drop-zone.drag { border-color: var(--accent); background: rgba(61, 126, 255, .08); }
   .dz-ico { font-size: 34px; margin-bottom: 10px; }
   #drop-zone p { font-size: 14px; }
   #drop-zone .muted { font-size: 12px; margin-top: 6px; }
   .file-name { margin-top: 12px; font-size: 13px; color: var(--cyan); font-weight: 600; }
-  .btn-sample { width: 100%; margin-top: 14px; }
 
   .local-files { margin-top: 14px; }
   .local-files label { font-size: 12px; color: var(--muted); }
@@ -110,15 +113,67 @@
     width: 100%; background: var(--bg); border: 1px solid var(--border);
     border-radius: 8px; color: var(--text); font-size: 13px; padding: 9px 12px; margin-top: 6px;
   }
-  .scope-row { display: flex; align-items: center; gap: 16px; margin-top: 14px; font-size: 13px; color: var(--muted); }
-  .scope-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-  .scope-row input { accent-color: var(--accent); }
-  .scope-row .scope-label { color: var(--text); font-weight: 600; }
 
-  .params-card { display: flex; flex-direction: column; }
+  .data-preview {
+    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+    margin-top: 14px; padding: 12px 18px;
+    background: rgba(45, 212, 191, .06); border: 1px solid rgba(45, 212, 191, .3);
+    border-radius: 10px;
+  }
+  .dp-item b { display: block; font-size: 16px; color: var(--cyan); }
+  .dp-item span { font-size: 12px; color: var(--muted); }
+  .dp-note { font-size: 12px; color: var(--muted); }
+
+  .btn-sample { width: 100%; margin-top: 14px; flex-direction: column; padding: 12px; }
+  .btn-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+  .scope-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .scope-card {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; transition: all .15s ease;
+  }
+  .scope-card:hover { border-color: var(--accent); }
+  .scope-card:has(input:checked) { border-color: var(--accent); background: rgba(61, 126, 255, .08); }
+  .scope-card input { accent-color: var(--accent); }
+  .sc-body b { display: block; font-size: 13.5px; color: var(--text); }
+  .sc-body span { font-size: 12px; color: var(--muted); }
+
+  .strategy-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .strategy-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; text-align: center; cursor: pointer; transition: all .15s ease;
+    position: relative;
+  }
+  .strategy-card:hover { border-color: var(--accent); }
+  .strategy-card.sel { border-color: var(--accent); background: rgba(61, 126, 255, .1); }
+  .strategy-card.sel::after {
+    content: "✓"; position: absolute; top: 8px; right: 12px;
+    color: var(--accent); font-weight: 700;
+  }
+  .strategy-card b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .strategy-card span { font-size: 12px; color: var(--muted); }
+
+  .start-card { text-align: center; }
+  .expect-line { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .expect-line b { color: var(--text); font-weight: 600; }
+  .adv-settings { margin-top: 18px; text-align: left; }
+  .adv-settings > summary {
+    font-size: 13px; color: var(--muted); cursor: pointer; text-align: center;
+    padding: 8px; border-radius: 8px;
+  }
+  .adv-settings > summary:hover { color: var(--text); background: rgba(61, 126, 255, .05); }
+  .adv-body { padding: 14px 6px 4px; border-top: 1px solid var(--border); margin-top: 8px; }
+  .param-tip { font-size: 11.5px; color: #5d6b85; margin-top: 4px; line-height: 1.5; }
+  .adv-line { font-size: 13px; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
+  .llm-row { gap: 20px; }
+  .llm-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .admin-details { margin: 8px 0 4px; }
+  .admin-details summary { font-size: 12px; color: #5d6b85; cursor: pointer; }
   .card-foot {
-    margin-top: auto; padding-top: 16px; text-align: right;
+    margin-top: 22px; padding-top: 14px; text-align: center;
     color: #4a5872; font-size: 12px; letter-spacing: 1px;
+    border-top: 1px solid rgba(34, 48, 77, .5);
   }
 
   .param-row { margin-bottom: 18px; }
@@ -289,8 +344,9 @@
   .prog-sub { font-size: 12px; color: var(--muted); margin-top: 12px; }
 
   @media (max-width: 1100px) {
-    .config-grid, .board-grid, .charts-row { grid-template-columns: 1fr; }
+    .config-flow, .board-grid, .charts-row { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .scope-cards, .strategy-cards { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -305,22 +361,25 @@
     </div>
   </div>
   <div class="top-tags">
-    <span class="tag">完全离线可运行</span>
-    <span class="tag">TF-IDF + DBSCAN</span>
+    <span class="tag">核心分析 · 完全离线</span>
+    <span class="tag">AI 事件识别</span>
     <span class="tag">V2.0</span>
   </div>
 </header>
 
 <main>
-  <!-- ================= 页面① 数据与参数 ================= -->
+  <div class="intro-note">核心分析完全离线：工单数据在本地即可完成全部识别分析，无需连接外部 AI 服务；AI 建议增强为可选能力，仅在管理员启用后生效。</div>
+
+  <!-- ================= 页面① 智能分析入口 ================= -->
   <section id="page-config">
-    <div class="config-grid">
-      <div class="card upload-card">
-        <h2>① 上传工单数据</h2>
+    <div class="config-flow">
+
+      <div class="card flow-card">
+        <h2>① 选择工单数据</h2>
         <div id="drop-zone">
-          <input type="file" id="file-input" accept=".csv" hidden>
+          <input type="file" id="file-input" accept=".csv,.xlsx" hidden>
           <div class="dz-ico">📄</div>
-          <p>点击选择或拖拽 CSV 文件到此处</p>
+          <p>点击选择或拖拽 CSV / Excel 工单文件到此处</p>
           <p class="muted">自动识别中英文列名 · 内置去重与清洗</p>
           <div class="file-name" id="file-name"></div>
         </div>
@@ -330,56 +389,93 @@
             <option value="">（使用内置样例数据）</option>
           </select>
         </div>
-        <div class="scope-row">
-          <span class="scope-label">分析范围</span>
-          <label><input type="radio" name="scope" value="all" checked> 全部</label>
-          <label><input type="radio" name="scope" value="d30"> 近30天</label>
-          <label><input type="radio" name="scope" value="d60"> 近60天</label>
+        <div class="data-preview hidden" id="data-preview">
+          <div class="dp-item"><b id="dp-rows">—</b><span>工单数量</span></div>
+          <div class="dp-item"><b id="dp-range">—</b><span>时间范围</span></div>
+          <div class="dp-item" id="dp-area-box"><b id="dp-areas">—</b><span>涉及区域</span></div>
+          <div class="dp-note" id="dp-note"></div>
         </div>
-        <button class="btn btn-sample" id="btn-sample">使用内置样例数据演示（37 条 · 5 类高频事件场景）</button>
+        <button class="btn btn-sample" id="btn-sample">使用内置样例数据快速体验<span class="btn-sub">37 条工单 · 5 类典型高频事件</span></button>
       </div>
 
-      <div class="card params-card">
-        <h2>② 识别参数
-          <span class="presets">
-            <button class="preset-btn" data-preset="default" title="阈值3 · 全量分析">默认</button>
-            <button class="preset-btn" data-preset="sensitive" title="阈值2 · 近30天，捕捉升温事件">灵敏</button>
-            <button class="preset-btn" data-preset="strict" title="阈值5 · 全量，只保留头部事件">严格</button>
-          </span>
-        </h2>
-        <div class="param-row">
-          <label>多频阈值 FREQ_THRESHOLD <b id="v-freq">3</b></label>
-          <input type="range" id="p-freq" min="2" max="15" value="3">
+      <div class="card flow-card">
+        <h2>② 分析时间范围</h2>
+        <div class="scope-cards">
+          <label class="scope-card">
+            <input type="radio" name="scope" value="all" checked>
+            <div class="sc-body"><b>全部数据</b><span>分析全量工单</span></div>
+          </label>
+          <label class="scope-card">
+            <input type="radio" name="scope" value="d30">
+            <div class="sc-body"><b>最近 30 天</b><span>聚焦近期动态</span></div>
+          </label>
+          <label class="scope-card">
+            <input type="radio" name="scope" value="d60">
+            <div class="sc-body"><b>最近 60 天</b><span>覆盖近两月</span></div>
+          </label>
         </div>
-        <div class="param-row">
-          <label>聚类邻域 CLUSTER_EPS <b id="v-eps">0.50</b></label>
-          <input type="range" id="p-eps" min="0.1" max="0.9" step="0.05" value="0.5">
+      </div>
+
+      <div class="card flow-card">
+        <h2>③ 分析策略</h2>
+        <div class="strategy-cards">
+          <div class="strategy-card sel" data-strategy="default"><b>推荐</b><span>适合日常分析</span></div>
+          <div class="strategy-card" data-strategy="sensitive"><b>灵敏</b><span>适合风险预警</span></div>
+          <div class="strategy-card" data-strategy="strict"><b>严格</b><span>减少误报</span></div>
         </div>
-        <div class="param-row">
-          <label>最少样本 CLUSTER_MIN_SAMPLES <b id="v-min">2</b></label>
-          <input type="range" id="p-min" min="2" max="10" value="2">
-        </div>
-        <div class="check-row">
-          <input type="checkbox" id="p-emb">
-          <span>启用本地 Embedding（可选，模型缺失自动回退 TF-IDF）</span>
-        </div>
-        <div class="check-row">
-          <input type="checkbox" id="p-llm">
-          <span>启用 LLM 处置建议增强（DeepSeek，词典未命中事件自动生成建议）</span>
-        </div>
-        <input class="webhook-input hidden" id="p-llm-key" type="password"
-               placeholder="DeepSeek API Key（也可通过环境变量 DEEPSEEK_API_KEY 配置）" style="margin-bottom:10px">
-        <details>
-          <summary>高级参数说明（开发调试用）</summary>
-          <p>风险权重：频次 0.35 / 趋势 0.30 / 集中度 0.15 / 敏感度 0.20<br>
-             趋势窗口：近 3 天 vs 基线 7 天<br>
-             风险等级：≥70 高关注 · ≥40 中关注 · 其余一般</p>
+      </div>
+
+      <div class="card flow-card start-card">
+        <div class="expect-line">本次分析将自动识别：<b>高频事件 · 趋势 · 风险 · 重点区域 · 处置建议</b></div>
+        <button class="btn primary big" id="btn-analyze">开始智能分析</button>
+
+        <details class="adv-settings">
+          <summary>⚙ 高级分析设置</summary>
+          <div class="adv-body">
+            <div class="param-row">
+              <label>高频事件触发阈值 <b id="v-freq">3</b></label>
+              <input type="range" id="p-freq" min="2" max="15" value="3">
+              <div class="param-tip">同一事件的工单达到该数量才判定为高频事件；阈值越高，结果越少越严格</div>
+            </div>
+            <div class="param-row">
+              <label>事件相似度阈值 <b id="v-eps">0.50</b></label>
+              <input type="range" id="p-eps" min="0.1" max="0.9" step="0.05" value="0.5">
+              <div class="param-tip">仅对小批量语义聚类生效；大数据量自动采用标签分组路线</div>
+            </div>
+            <div class="param-row">
+              <label>最少相似工单数 <b id="v-min">2</b></label>
+              <input type="range" id="p-min" min="2" max="10" value="2">
+              <div class="param-tip">构成一个事件簇所需的最少相似工单数量</div>
+            </div>
+            <div class="check-row">
+              <input type="checkbox" id="p-emb">
+              <span>启用本地语义向量增强（可选，模型缺失时自动回退，不影响使用）</span>
+            </div>
+            <div class="adv-line">智能建议增强</div>
+            <div class="check-row llm-row">
+              <label><input type="radio" name="llm_mode" value="off" checked> 不启用</label>
+              <label><input type="radio" name="llm_mode" value="configured"> 使用已配置的 AI 服务（DeepSeek）</label>
+            </div>
+            <details class="admin-details">
+              <summary>管理员设置（自定义 AI 服务密钥）</summary>
+              <input class="webhook-input" id="p-llm-key" type="password"
+                     placeholder="DeepSeek API Key（留空则使用本机已配置密钥）">
+            </details>
+            <div class="adv-line">结果流转</div>
+            <input class="webhook-input" id="p-webhook" type="password"
+                   placeholder="飞书群机器人 Webhook 地址（留空则跳过推送，分析完成后亦可在结果页推送）">
+            <details>
+              <summary>风险评分规则说明</summary>
+              <p>优先级 = 频次分×35% + 趋势分×30% + 集中度分×15% + 敏感度分×20%<br>
+                 趋势窗口：近 3 天 vs 基线 7 天<br>
+                 风险等级：≥70 高关注 · ≥40 中关注 · 其余 一般</p>
+            </details>
+          </div>
         </details>
-        <h2 style="margin-top:20px">③ 飞书推送（可选）</h2>
-        <input class="webhook-input" id="p-webhook" type="password" placeholder="飞书群机器人 Webhook 地址（留空则跳过推送）">
-        <button class="btn primary big" id="btn-analyze">开 始 分 析</button>
+
         <div class="card-foot">12345 高频事件智能预警与处置辅助系统 · 顺德区政务热线智能分析 · V2.0</div>
       </div>
+
     </div>
   </section>
 
@@ -535,10 +631,11 @@ dz.addEventListener("drop", e => {
 });
 fi.addEventListener("change", () => { if (fi.files.length) setFile(fi.files[0]); });
 function setFile(f) {
-  if (!f.name.toLowerCase().endsWith(".csv")) { toast("请上传 CSV 文件", true); return; }
+  if (!/\.(csv|xlsx)$/i.test(f.name)) { toast("请上传 CSV 或 Excel 文件", true); return; }
   state.file = f;
   $("file-select").value = "";
   $("file-name").textContent = "已选择：" + f.name + "（" + (f.size / 1024).toFixed(1) + " KB）";
+  loadPreview({ file: f });
 }
 
 /* 本地数据文件列表（真实数据放入 data/input 即出现） */
@@ -559,7 +656,41 @@ async function loadLocalFiles() {
 loadLocalFiles();
 $("file-select").addEventListener("change", () => {
   state.file = null; fi.value = ""; $("file-name").textContent = "";
+  loadPreview({ datafile: $("file-select").value || "sample.csv" });
 });
+
+/* 数据加载确认：真实读取条数/时间范围/区域数，算不出的项不显示、不伪造 */
+async function loadPreview(params) {
+  const box = $("data-preview");
+  box.classList.remove("hidden");
+  $("dp-rows").textContent = "…";
+  $("dp-range").textContent = "…";
+  $("dp-areas").textContent = "…";
+  $("dp-note").textContent = "正在读取数据…";
+  try {
+    const fd = new FormData();
+    if (params.file) fd.append("file", params.file);
+    else fd.append("datafile", params.datafile);
+    const res = await fetch("/api/preview", { method: "POST", body: fd });
+    const d = await res.json();
+    if (!d.ok) {
+      $("dp-note").textContent = "数据读取失败：" + (d.error || "未知错误");
+      return;
+    }
+    $("dp-rows").textContent = d.rows.toLocaleString() + " 条";
+    $("dp-range").textContent = (d.time_min && d.time_max)
+      ? (d.time_min + " ~ " + d.time_max) : "无时间字段";
+    if (d.areas != null) {
+      $("dp-area-box").style.display = "";
+      $("dp-areas").textContent = d.areas + " 个";
+    } else {
+      $("dp-area-box").style.display = "none";
+    }
+    $("dp-note").textContent = "数据已加载，可开始分析";
+  } catch (e) {
+    $("dp-note").textContent = "数据预览失败，不影响分析";
+  }
+}
 
 ["freq", "eps", "min"].forEach(k => {
   $("p-" + k).addEventListener("input", () => {
@@ -574,11 +705,12 @@ $("btn-sample").addEventListener("click", () => {
 $("btn-analyze").addEventListener("click", () => runAnalysis());
 $("btn-back").addEventListener("click", () => showPage("config"));
 $("btn-feishu").addEventListener("click", pushFeishu);
-$("p-llm").addEventListener("change", () => {
-  $("p-llm-key").classList.toggle("hidden", !$("p-llm").checked);
-});
 
 /* ================= 分析 ================= */
+function llmEnabled() {
+  const r = document.querySelector('input[name="llm_mode"]:checked');
+  return r && r.value === "configured";
+}
 let progTimer = null;
 function startProgress(useLLM) {
   const stages = [
@@ -621,14 +753,14 @@ async function runAnalysis() {
   fd.append("min_samples", $("p-min").value);
   fd.append("use_embedding", $("p-emb").checked ? "true" : "false");
   fd.append("scope", (document.querySelector('input[name="scope"]:checked') || {}).value || "all");
-  fd.append("use_llm", $("p-llm").checked ? "true" : "false");
+  fd.append("use_llm", llmEnabled() ? "true" : "false");
   fd.append("llm_key", $("p-llm-key").value.trim());
   if (state.file) {
     fd.append("file", state.file);
   } else if ($("file-select").value) {
     fd.append("datafile", $("file-select").value);
   }
-  startProgress($("p-llm").checked);
+  startProgress(llmEnabled());
   try {
     const res = await fetch("/api/analyze", { method: "POST", body: fd });
     const data = await res.json();
@@ -788,21 +920,22 @@ $("f-q").addEventListener("input", renderBoard);
 $("f-area").addEventListener("change", renderBoard);
 $("f-level").addEventListener("change", renderBoard);
 
-/* ================= 预设参数 ================= */
-const PRESETS = {
+/* ================= 分析策略 ================= */
+const STRATEGIES = {
   default:   { freq: 3, scope: "all" },
   sensitive: { freq: 2, scope: "d30" },
   strict:    { freq: 5, scope: "all" },
 };
-document.querySelectorAll(".preset-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const p = PRESETS[btn.dataset.preset];
-    if (!p) return;
-    $("p-freq").value = p.freq;
-    $("v-freq").textContent = p.freq;
-    const radio = document.querySelector('input[name="scope"][value="' + p.scope + '"]');
+document.querySelectorAll(".strategy-card").forEach(card => {
+  card.addEventListener("click", () => {
+    document.querySelectorAll(".strategy-card").forEach(c => c.classList.remove("sel"));
+    card.classList.add("sel");
+    const s = STRATEGIES[card.dataset.strategy];
+    if (!s) return;
+    $("p-freq").value = s.freq;
+    $("v-freq").textContent = s.freq;
+    const radio = document.querySelector('input[name="scope"][value="' + s.scope + '"]');
     if (radio) radio.checked = true;
-    toast("已套用预设：" + btn.textContent + "（点开始分析生效）");
   });
 });
 

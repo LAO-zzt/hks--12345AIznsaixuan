@@ -233,6 +233,59 @@ def datafiles():
     return {"ok": True, "files": files}
 
 
+def _read_upload(filename: str, content: bytes) -> pd.DataFrame:
+    """上传文件读取：CSV 直接解析，Excel 落临时文件流式读取。"""
+    if filename.lower().endswith((".xlsx", ".xlsm")):
+        import tempfile
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+            return loader.read_xlsx_streaming(tmp_path)
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+    return loader.load_csv_bytes(content)
+
+
+@app.post("/api/preview")
+async def preview(file: UploadFile = File(None), datafile: str = Form("")):
+    """数据加载确认：真实读取条数/时间范围/区域数，供第一屏展示（禁止写死）。"""
+    try:
+        if file is not None and getattr(file, "filename", ""):
+            content = await file.read()
+            if not content.strip():
+                return {"ok": False, "error": "上传的文件为空。"}
+            df = loader.load_orders(_read_upload(file.filename, content))
+        else:
+            name = os.path.basename(datafile) if datafile else "sample.csv"
+            path = os.path.join(config.INPUT_DIR, name)
+            if not os.path.exists(path):
+                return {"ok": False, "error": "数据文件不存在。"}
+            df = loader.load_orders_cached(path)
+
+        t = df["submit_time"].dropna()
+        area_count = None
+        if "area" in df.columns:
+            areas = df["area"].astype(str).str.strip()
+            areas = areas[areas != ""]
+            if not areas.empty:
+                area_count = int(areas.nunique())
+        return {
+            "ok": True,
+            "rows": int(len(df)),
+            "time_min": t.min().strftime("%Y-%m-%d") if not t.empty else None,
+            "time_max": t.max().strftime("%Y-%m-%d") if not t.empty else None,
+            "areas": area_count,
+        }
+    except Exception as e:
+        return {"ok": False, "error": "数据读取失败：%s" % e}
+
+
 @app.post("/api/analyze")
 async def analyze(
     file: UploadFile = File(None),
@@ -256,9 +309,9 @@ async def analyze(
             if not content.strip():
                 return {"ok": False, "error": "上传的文件为空。"}
             try:
-                df_raw = loader.load_csv_bytes(content)
+                df_raw = _read_upload(file.filename, content)
             except Exception as e:
-                return {"ok": False, "error": "文件读取失败：%s。请确认为有效 CSV。" % e}
+                return {"ok": False, "error": "文件读取失败：%s。请确认为有效 CSV/Excel。" % e}
             df = loader.load_orders(df_raw)
         elif datafile:
             # 防路径穿越：只允许 data/input 下的文件名
