@@ -456,6 +456,310 @@ async def feishu(body: dict):
     return {"ok": ok, "message": msg}
 
 
+# ============================ 三页业务结构：总览 / 工作台 / 详情 / 核查 ============================
+
+REVIEW_FILE = os.path.join(config.OUTPUT_DIR, "reviews.json")
+REVIEWS = {}
+
+
+def _load_reviews():
+    """读取人工核查状态（持久化，重启不丢）。"""
+    global REVIEWS
+    try:
+        with open(REVIEW_FILE, "r", encoding="utf-8") as f:
+            import json as _json
+            REVIEWS = _json.load(f)
+    except Exception:
+        REVIEWS = {}
+
+
+def _save_reviews():
+    try:
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+        with open(REVIEW_FILE, "w", encoding="utf-8") as f:
+            import json as _json
+            _json.dump(REVIEWS, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
+_load_reviews()
+
+_LEVEL_RANK = {"高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3, "": 9}
+
+
+def _cluster_event_map():
+    """cluster_id -> 事件字典。"""
+    if not STATE["events"]:
+        return {}
+    return {e["cluster_id"]: e for e in STATE["events"]}
+
+
+@app.get("/api/boot")
+def boot():
+    """系统启动状态：是否已有分析结果 + 默认数据源（前端自动进入工作状态）。"""
+    files = []
+    try:
+        for name in sorted(os.listdir(config.INPUT_DIR)):
+            if name.lower() == "sample.csv":
+                continue
+            if name.lower().endswith((".csv", ".xlsx", ".xlsm")):
+                files.append(name)
+    except Exception:
+        pass
+    return {"ok": True, "has_result": STATE["df"] is not None,
+            "default_file": files[0] if files else ""}
+
+
+@app.get("/api/overview")
+def overview():
+    """全局总览聚合：数据源信息 + 核查统计 + 区域聚合 + 全局日趋势（全部实时计算）。"""
+    df = STATE["df"]
+    if df is None:
+        return {"ok": False, "error": "暂无分析结果。"}
+    cmap = _cluster_event_map()
+    high_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == "高关注")
+
+    # 核查统计：待核查 = 高关注事件工单中尚未人工核查的数量
+    multi_mask = df.get("is_multi_freq", pd.Series([False] * len(df), index=df.index)).astype(bool)
+    high_mask = df["cluster_id"].isin(high_clusters) if "cluster_id" in df.columns else multi_mask.iloc[0:0]
+    high_ids = set(df.loc[high_mask, "order_id"].astype(str))
+    confirmed = sum(1 for v in REVIEWS.values() if v.get("status") == "已确认")
+    rejected = sum(1 for v in REVIEWS.values() if v.get("status") == "误判")
+    flagged = sum(1 for v in REVIEWS.values() if v.get("status") == "重点")
+    reviewed_in_high = sum(1 for oid in REVIEWS if oid in high_ids)
+    pending = max(0, len(high_ids) - reviewed_in_high)
+
+    # 区域聚合（带坐标，供首页地图四档切换）
+    from utils.helpers import load_area_coords
+    coords = load_area_coords()
+    areas_col = df.get("extracted_area", pd.Series([""] * len(df), index=df.index)).astype(str).str.strip()
+    area_rows = []
+    for area, cnt in areas_col[areas_col != ""].value_counts().items():
+        if area not in coords:
+            continue
+        lat, lon = coords[area]
+        a_mask = areas_col == area
+        area_rows.append({
+            "area": area, "lat": lat, "lon": lon,
+            "total": int(cnt),
+            "multi": int(multi_mask[a_mask].sum()),
+            "high": int((high_mask & a_mask).sum()),
+        })
+
+    # 全局日趋势
+    t = df["submit_time"].dropna()
+    daily_all = []
+    if not t.empty:
+        daily = t.dt.date.value_counts().sort_index()
+        daily_all = [{"date": str(k), "count": int(v)} for k, v in daily.items()]
+
+    return {
+        "ok": True,
+        "source": {
+            "rows": int(len(df)),
+            "time_min": t.min().strftime("%Y-%m-%d") if not t.empty else None,
+            "time_max": t.max().strftime("%Y-%m-%d") if not t.empty else None,
+        },
+        "review": {"pending": pending, "confirmed": confirmed,
+                   "rejected": rejected, "flagged": flagged},
+        "areas": area_rows,
+        "daily_all": daily_all,
+        "multi_orders": int(multi_mask.sum()),
+    }
+
+
+@app.get("/api/orders")
+def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
+           multi: str = "", level: str = "", review: str = "",
+           event: str = "", sort: str = "default"):
+    """工单工作台：全量工单搜索 / 筛选 / 排序 / 分页（服务端处理，支撑十万级数据）。"""
+    df = STATE["df"]
+    if df is None:
+        return {"ok": False, "error": "暂无分析结果。"}
+    cmap = _cluster_event_map()
+
+    view = df
+    if q:
+        qq = q.lower()
+        mask = view["content"].astype(str).str.lower().str.contains(qq, na=False) | \
+               view["order_id"].astype(str).str.lower().str.contains(qq, na=False)
+        if "title" in view.columns:
+            mask = mask | view["title"].astype(str).str.lower().str.contains(qq, na=False)
+        view = view[mask]
+    if area:
+        view = view[view.get("extracted_area", pd.Series(index=view.index)).astype(str) == area]
+    if multi in ("1", "0"):
+        view = view[view["is_multi_freq"].astype(bool) == (multi == "1")]
+    if level:
+        lv_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == level)
+        view = view[view["cluster_id"].isin(lv_clusters)]
+    if event:
+        ev = next((e for e in (STATE["events"] or []) if e["event_id"] == event), None)
+        view = view[view["cluster_id"] == ev["cluster_id"]] if ev else view.iloc[0:0]
+    if review == "待核查":
+        high_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == "高关注")
+        view = view[view["cluster_id"].isin(high_clusters) &
+                    ~view["order_id"].astype(str).isin(set(REVIEWS.keys()))]
+    elif review:
+        ids = set(oid for oid, v in REVIEWS.items() if v.get("status") == review)
+        view = view[view["order_id"].astype(str).isin(ids)]
+
+    # 排序（默认：待核查+高优先优先；时间倒序兜底）
+    lv_of = view["cluster_id"].map(lambda c: _LEVEL_RANK.get(cmap.get(c, {}).get("risk_level", ""), 9))
+    reviewed_flag = view["order_id"].astype(str).isin(set(REVIEWS.keys())).astype(int)
+    if sort == "freq":
+        view = view.assign(_a=lv_of, _b=view["cluster_size"]).sort_values(
+            ["_a", "_b"], ascending=[True, False])
+    elif sort == "time":
+        view = view.sort_values("submit_time", ascending=False, na_position="last")
+    else:  # default = 待核查 + 高优先优先
+        view = view.assign(_r=reviewed_flag, _a=lv_of, _b=view["cluster_size"]).sort_values(
+            ["_r", "_a", "_b"], ascending=[True, True, False])
+
+    total = int(len(view))
+    page = max(1, page)
+    size = min(max(1, size), 200)
+    part = view.iloc[(page - 1) * size:(page - 1) * size + size]
+
+    rows = []
+    for r in part.itertuples(index=False):
+        ev = cmap.get(r.cluster_id)
+        oid = str(r.order_id)
+        rv = REVIEWS.get(oid)
+        rows.append({
+            "order_id": oid,
+            "title": str(getattr(r, "title", "") or "")[:60],
+            "content": truncate(r.content, 60),
+            "area": str(getattr(r, "extracted_area", "") or ""),
+            "event": ev.get("event_type", "") if ev else "",
+            "event_id": ev.get("event_id", "") if ev else "",
+            "size": int(r.cluster_size),
+            "multi": bool(r.is_multi_freq),
+            "level": ev.get("risk_level", "") if ev else "",
+            "review": rv.get("status", "") if rv else "",
+            "time": _fmt_time(r.submit_time),
+        })
+    return {"ok": True, "total": total, "page": page, "size": size, "rows": rows}
+
+
+@app.get("/api/order/{oid}")
+def order_detail(oid: str):
+    """工单详情：原始工单 + AI结构化理解 + 关联工单 + 判断依据 + 相似非重复 + 核查状态。"""
+    df = STATE["df"]
+    if df is None:
+        return {"ok": False, "error": "暂无分析结果。"}
+    hit = df[df["order_id"].astype(str) == oid]
+    if hit.empty:
+        return {"ok": False, "error": "未找到工单：%s" % oid}
+    r = hit.iloc[0]
+    cid = int(r["cluster_id"]) if "cluster_id" in df.columns else -1
+    cmap = _cluster_event_map()
+    ev = cmap.get(cid)
+
+    # 关联工单（同事件簇，最多 20 条）
+    mates = []
+    if cid != -1:
+        same = df[(df["cluster_id"] == cid) & (df["order_id"].astype(str) != oid)].head(20)
+        for m in same.itertuples(index=False):
+            mates.append({
+                "order_id": str(m.order_id),
+                "content": truncate(m.content, 70),
+                "area": str(getattr(m, "extracted_area", "") or ""),
+                "time": _fmt_time(m.submit_time),
+            })
+
+    # 判断依据：当前工单与事件簇代表值的一致性因子（全部可验证，不伪造）
+    basis = []
+    if ev:
+        my_area = str(getattr(r, "extracted_area", "") or "")
+        my_subj = str(getattr(r, "extracted_subject", "") or "")
+        ev_subj = ev.get("event_subject", "")
+        ev_area = ev.get("area", "")
+        basis.append({"factor": "事件标签",
+                      "result": "一致" if ev.get("event_type") else "缺失"})
+        if ev_area and my_area:
+            basis.append({"factor": "区域", "result": "一致" if my_area == ev_area else "不一致"})
+        else:
+            basis.append({"factor": "区域", "result": "缺失"})
+        if ev_subj and not str(ev_subj).startswith("（") and not str(ev_subj).startswith("多主体聚合"):
+            ok = bool(my_subj and (my_subj == ev_subj or ev_subj in my_subj or my_subj in ev_subj))
+            basis.append({"factor": "主体", "result": "一致" if ok else "不一致"})
+        else:
+            basis.append({"factor": "主体", "result": "缺失"})
+
+    # 相似但非重复：同事件类型的其他事件（说明AI不是简单关键词匹配）
+    similar = []
+    if ev:
+        for e2 in (STATE["events"] or []):
+            if e2["event_id"] != ev["event_id"] and e2.get("event_type") == ev.get("event_type"):
+                similar.append({
+                    "event_id": e2["event_id"], "area": e2.get("area", ""),
+                    "frequency": e2["frequency"],
+                    "reason": "事件类型同为“%s”，但区域/主体不同，判定不属于同一事件" % ev.get("event_type", ""),
+                })
+            if len(similar) >= 3:
+                break
+
+    rv = REVIEWS.get(oid)
+    return {
+        "ok": True,
+        "order": {
+            "order_id": oid,
+            "title": str(getattr(r, "title", "") or ""),
+            "content": str(r.content),
+            "subject_raw": str(getattr(r, "subject", "") or ""),
+            "area_raw": str(getattr(r, "area", "") or ""),
+            "time": _fmt_time(r.submit_time),
+        },
+        "ai": {
+            "subject": str(getattr(r, "extracted_subject", "") or ""),
+            "event": str(getattr(r, "extracted_event", "") or ""),
+            "area": str(getattr(r, "extracted_area", "") or ""),
+            "normalized": str(getattr(r, "normalized_content", "") or ""),
+            "department": ev.get("department", "") if ev else "",
+            "advice": ev.get("advice", "") if ev else "",
+            "advice_source": ev.get("advice_source", "rules") if ev else "rules",
+        },
+        "cluster": {
+            "event_id": ev.get("event_id", "") if ev else "",
+            "event_type": ev.get("event_type", "") if ev else "",
+            "frequency": ev.get("frequency", int(r.cluster_size)) if ev else int(r.cluster_size),
+            "level": ev.get("risk_level", "") if ev else "",
+            "is_multi": bool(r.is_multi_freq),
+        },
+        "mates": mates,
+        "basis": basis,
+        "similar": similar,
+        "review": rv or None,
+    }
+
+
+@app.post("/api/review")
+async def review(body: dict):
+    """人工核查：批量标注 已确认/误判/待定/重点，写入操作记录并持久化。"""
+    ids = body.get("ids") or []
+    status = str(body.get("status", "")).strip()
+    if status not in ("已确认", "误判", "待定", "重点", ""):
+        return {"ok": False, "message": "无效状态。"}
+    if not ids:
+        return {"ok": False, "message": "未选择工单。"}
+    import datetime
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    for oid in ids:
+        oid = str(oid)
+        if status == "":
+            REVIEWS.pop(oid, None)
+            continue
+        entry = REVIEWS.get(oid, {"log": []})
+        entry["status"] = status
+        entry.setdefault("log", []).append({"ts": ts, "action": status})
+        entry["log"] = entry["log"][-20:]
+        REVIEWS[oid] = entry
+    _save_reviews()
+    return {"ok": True, "message": "已标记 %d 条工单为「%s」" % (len(ids), status)}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8600)

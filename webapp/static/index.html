@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>12345 高频事件智能预警与处置辅助系统</title>
+<title>12345热线AI智能工单系统</title>
 <link rel="stylesheet" href="/static/vendor/leaflet.css">
 <script src="/static/vendor/echarts.min.js"></script>
 <script src="/static/vendor/leaflet.js"></script>
@@ -23,8 +23,7 @@
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: var(--bg);
-    color: var(--text);
+    background: var(--bg); color: var(--text);
     font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
     min-height: 100vh;
   }
@@ -33,320 +32,288 @@
 
   /* ---------- 顶栏 ---------- */
   .topbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 32px;
+    display: flex; align-items: center; gap: 22px;
+    padding: 14px 28px;
     background: linear-gradient(180deg, #0f1a30 0%, #0a111f 100%);
     border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 50;
   }
-  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
   .logo {
-    width: 46px; height: 46px; border-radius: 10px;
-    background: var(--accent);
+    width: 40px; height: 40px; border-radius: 9px; background: var(--accent);
     display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 15px; color: #fff; letter-spacing: .5px;
+    font-weight: 800; font-size: 13px; color: #fff;
   }
-  .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
-  .brand p { font-size: 12px; color: var(--muted); margin-top: 3px; letter-spacing: 2px; }
-  .top-tags { display: flex; gap: 8px; }
-  .tag {
-    font-size: 12px; color: var(--cyan);
-    border: 1px solid rgba(45, 212, 191, .35);
-    background: rgba(45, 212, 191, .08);
-    padding: 4px 10px; border-radius: 999px;
+  .brand h1 { font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+  .brand p { font-size: 11px; color: var(--muted); margin-top: 2px; letter-spacing: 1.5px; }
+  .main-nav { display: flex; gap: 6px; margin-left: 12px; }
+  .nav-btn {
+    background: transparent; border: 1px solid transparent; color: var(--muted);
+    font-size: 14px; padding: 8px 18px; border-radius: 8px; cursor: pointer;
+    transition: all .15s ease;
   }
+  .nav-btn:hover { color: var(--text); background: rgba(61,126,255,.08); }
+  .nav-btn.active { color: var(--text); background: rgba(61,126,255,.15); border-color: rgba(61,126,255,.4); }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .data-status { font-size: 12px; color: var(--cyan); display: flex; align-items: center; gap: 6px; }
+  .data-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; }
+  .data-status.loading .dot { background: var(--amber); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .gear-btn {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    font-size: 15px; width: 38px; height: 38px; border-radius: 9px; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .gear-btn:hover { border-color: var(--accent); }
 
-  main { max-width: 1440px; margin: 0 auto; padding: 24px 32px 48px; }
+  main { max-width: 1440px; margin: 0 auto; padding: 20px 28px 48px; }
 
-  /* ---------- 卡片与按钮 ---------- */
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 22px;
-  }
-  .card h2 {
-    font-size: 15px; font-weight: 700; margin-bottom: 16px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .card h2::before {
-    content: ""; width: 4px; height: 16px; border-radius: 2px;
-    background: var(--accent); display: inline-block;
-  }
-  .card h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; }
+  /* ---------- 通用卡片/表格/按钮/徽章 ---------- */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h2::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--accent); }
+  .h-note { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 10px; }
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     border: 1px solid var(--border); border-radius: 8px;
     background: var(--panel2); color: var(--text);
-    font-size: 14px; padding: 10px 18px; cursor: pointer;
-    transition: all .15s ease; text-decoration: none;
+    font-size: 13.5px; padding: 9px 18px; cursor: pointer; transition: all .15s ease;
+    text-decoration: none;
   }
   .btn:hover { border-color: var(--accent); }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .btn.primary:hover { background: #2f6bec; }
-  .btn.big { width: 100%; padding: 14px; font-size: 16px; margin-top: 18px; }
-  .btn.small { padding: 7px 14px; font-size: 13px; }
-  .btn:disabled { opacity: .55; cursor: not-allowed; }
-
-  /* ---------- 页面① 智能分析入口 ---------- */
-  .intro-note {
-    max-width: 860px; margin: 0 auto 18px; font-size: 12.5px; color: var(--muted);
-    line-height: 1.7; text-align: center;
-  }
-  .config-flow { max-width: 860px; margin: 0 auto; }
-  .flow-card { margin-bottom: 18px; }
-  .flow-card h2 { margin-bottom: 14px; }
-
-  #drop-zone {
-    border: 1.5px dashed #33456b; border-radius: 10px;
-    padding: 36px 20px; text-align: center; cursor: pointer;
-    transition: all .15s ease; background: rgba(61, 126, 255, .03);
-  }
-  #drop-zone:hover, #drop-zone.drag { border-color: var(--accent); background: rgba(61, 126, 255, .08); }
-  .dz-ico { font-size: 34px; margin-bottom: 10px; }
-  #drop-zone p { font-size: 14px; }
-  #drop-zone .muted { font-size: 12px; margin-top: 6px; }
-  .file-name { margin-top: 12px; font-size: 13px; color: var(--cyan); font-weight: 600; }
-
-  .local-files { margin-top: 14px; }
-  .local-files label { font-size: 12px; color: var(--muted); }
-  .file-select {
-    width: 100%; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text); font-size: 13px; padding: 9px 12px; margin-top: 6px;
-  }
-
-  .data-preview {
-    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
-    margin-top: 14px; padding: 12px 18px;
-    background: rgba(45, 212, 191, .06); border: 1px solid rgba(45, 212, 191, .3);
-    border-radius: 10px;
-  }
-  .dp-item b { display: block; font-size: 16px; color: var(--cyan); }
-  .dp-item span { font-size: 12px; color: var(--muted); }
-  .dp-note { font-size: 12px; color: var(--muted); }
-
-  .btn-sample { width: 100%; margin-top: 14px; flex-direction: column; padding: 12px; }
-  .btn-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
-
-  .scope-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .scope-card {
-    display: flex; align-items: center; gap: 10px; cursor: pointer;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; transition: all .15s ease;
-  }
-  .scope-card:hover { border-color: var(--accent); }
-  .scope-card:has(input:checked) { border-color: var(--accent); background: rgba(61, 126, 255, .08); }
-  .scope-card input { accent-color: var(--accent); }
-  .sc-body b { display: block; font-size: 13.5px; color: var(--text); }
-  .sc-body span { font-size: 12px; color: var(--muted); }
-
-  .strategy-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .strategy-card {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px; text-align: center; cursor: pointer; transition: all .15s ease;
-    position: relative;
-  }
-  .strategy-card:hover { border-color: var(--accent); }
-  .strategy-card.sel { border-color: var(--accent); background: rgba(61, 126, 255, .1); }
-  .strategy-card.sel::after {
-    content: "✓"; position: absolute; top: 8px; right: 12px;
-    color: var(--accent); font-weight: 700;
-  }
-  .strategy-card b { display: block; font-size: 15px; margin-bottom: 4px; }
-  .strategy-card span { font-size: 12px; color: var(--muted); }
-
-  .start-card { text-align: center; }
-  .expect-line { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-  .expect-line b { color: var(--text); font-weight: 600; }
-  .adv-settings { margin-top: 18px; text-align: left; }
-  .adv-settings > summary {
-    font-size: 13px; color: var(--muted); cursor: pointer; text-align: center;
-    padding: 8px; border-radius: 8px;
-  }
-  .adv-settings > summary:hover { color: var(--text); background: rgba(61, 126, 255, .05); }
-  .adv-body { padding: 14px 6px 4px; border-top: 1px solid var(--border); margin-top: 8px; }
-  .param-tip { font-size: 11.5px; color: #5d6b85; margin-top: 4px; line-height: 1.5; }
-  .adv-line { font-size: 13px; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
-  .llm-row { gap: 20px; }
-  .llm-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-  .admin-details { margin: 8px 0 4px; }
-  .admin-details summary { font-size: 12px; color: #5d6b85; cursor: pointer; }
-  .card-foot {
-    margin-top: 22px; padding-top: 14px; text-align: center;
-    color: #4a5872; font-size: 12px; letter-spacing: 1px;
-    border-top: 1px solid rgba(34, 48, 77, .5);
-  }
-
-  .param-row { margin-bottom: 18px; }
-  .param-row label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-  .param-row label b { color: var(--text); font-size: 14px; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: 4px 0 14px; }
-  .check-row input { accent-color: var(--accent); }
-  .webhook-input {
-    width: 100%; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text); font-size: 13px; padding: 9px 12px; margin-top: 6px;
-  }
-  details { margin-top: 4px; }
-  summary { font-size: 12px; color: var(--muted); cursor: pointer; }
-  details p { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
-
-  /* ---------- 页面② 结果 ---------- */
-  .results-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
-  .run-summary { flex: 1; font-size: 13px; color: var(--muted); min-width: 240px; }
-  .run-summary b { color: var(--cyan); }
-  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
-  .kpi {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px 20px; position: relative; overflow: hidden;
-  }
-  .kpi::before {
-    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-    background: var(--accent);
-  }
-  .kpi.k-red::before { background: var(--red); }
-  .kpi.k-cyan::before { background: var(--cyan); }
-  .kpi.k-amber::before { background: var(--amber); }
-  .kpi .num { font-size: 32px; font-weight: 800; line-height: 1.15; }
-  .kpi .lbl { font-size: 13px; color: var(--muted); margin-top: 6px; }
-  .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  .board-grid { display: block; }
-  .board-scroll { max-height: 430px; overflow-y: auto; }
-  .h-note { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 10px; }
-
-  .board-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-  .tool-input, .tool-select {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-    color: var(--text); font-size: 13px; padding: 7px 12px;
-  }
-  .tool-input { width: 220px; }
-  .tool-select { min-width: 130px; }
-
-  th.sortable { cursor: pointer; user-select: none; }
-  th.sortable:hover { color: var(--text); }
-  th.sortable::after { content: " ⇅"; opacity: .45; font-size: 11px; }
-  th.sortable.asc::after { content: " ↑"; opacity: 1; color: var(--accent); }
-  th.sortable.desc::after { content: " ↓"; opacity: 1; color: var(--accent); }
-
-  .presets { float: right; display: inline-flex; gap: 8px; }
-  .preset-btn {
-    background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
-    font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
-    transition: all .15s ease;
-  }
-  .preset-btn:hover { border-color: var(--accent); color: var(--text); }
-
+  .btn.small { padding: 6px 13px; font-size: 12.5px; }
+  .btn.danger { border-color: rgba(244,87,77,.5); color: var(--red); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th {
     text-align: left; color: var(--muted); font-weight: 600; font-size: 12px;
     padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
     position: sticky; top: 0; background: var(--panel); z-index: 2;
   }
-  td { padding: 10px; border-bottom: 1px solid rgba(34, 48, 77, .55); vertical-align: middle; }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(34,48,77,.55); vertical-align: middle; }
   .clickable tbody tr { cursor: pointer; transition: background .12s; }
-  .clickable tbody tr:hover { background: rgba(61, 126, 255, .07); }
-  .clickable tbody tr.sel { background: rgba(61, 126, 255, .13); box-shadow: inset 3px 0 0 var(--accent); }
-  .ev-name { font-weight: 600; }
-  .ev-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-  .badge { display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
-  .b-red { background: rgba(244, 87, 77, .15); color: var(--red); border: 1px solid rgba(244, 87, 77, .4); }
-  .b-amber { background: rgba(245, 166, 35, .13); color: var(--amber); border: 1px solid rgba(245, 166, 35, .4); }
-  .b-green { background: rgba(52, 199, 123, .13); color: var(--green); border: 1px solid rgba(52, 199, 123, .4); }
-  .b-gray { background: rgba(139, 152, 179, .13); color: var(--muted); border: 1px solid rgba(139, 152, 179, .35); }
+  .clickable tbody tr:hover { background: rgba(61,126,255,.07); }
+  .clickable tbody tr.sel { background: rgba(61,126,255,.13); box-shadow: inset 3px 0 0 var(--accent); }
+  .badge { display: inline-block; font-size: 11.5px; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .b-red { background: rgba(244,87,77,.15); color: var(--red); border: 1px solid rgba(244,87,77,.4); }
+  .b-amber { background: rgba(245,166,35,.13); color: var(--amber); border: 1px solid rgba(245,166,35,.4); }
+  .b-green { background: rgba(52,199,123,.13); color: var(--green); border: 1px solid rgba(52,199,123,.4); }
+  .b-gray { background: rgba(139,152,179,.13); color: var(--muted); border: 1px solid rgba(139,152,179,.35); }
+  .b-blue { background: rgba(61,126,255,.15); color: #7ea8ff; border: 1px solid rgba(61,126,255,.45); }
+  .b-cyan { background: rgba(45,212,191,.12); color: var(--cyan); border: 1px solid rgba(45,212,191,.4); }
   .trend-up { color: var(--red); font-weight: 700; }
   .trend-down { color: var(--green); font-weight: 700; }
   .trend-flat, .trend-unknown { color: var(--muted); }
-
-  /* ---------- 事件详情（全宽两行网格） ---------- */
-  #detail-empty { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px; }
-  .detail-grid-a { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; }
-  .detail-grid-b { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; margin-top: 18px; }
-  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; font-size: 14px; }
-  .meta-grid .k { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
-  .meta-grid .v { font-size: 14px; }
-  .chart-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-  .chart-box h3 { margin: 2px 0 4px 6px; }
-  .chart { width: 100%; height: 210px; }
-  .chart-lg { height: 300px; }
-  .area-note { font-size: 12px; color: var(--muted); margin: 8px 6px 2px; line-height: 1.6; }
-  .risk-box, .advice-box {
-    border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7; margin-top: 14px;
+  .need-fill { color: var(--red); font-size: 12.5px; font-weight: 600; }
+  .ai-badge {
+    display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px;
+    background: rgba(61,126,255,.18); color: #7ea8ff; border: 1px solid rgba(61,126,255,.5);
+    margin-left: 8px; vertical-align: 1px;
   }
-  .risk-box { background: rgba(244, 87, 77, .07); border: 1px solid rgba(244, 87, 77, .28); }
-  .advice-box { background: rgba(45, 212, 191, .06); border: 1px solid rgba(45, 212, 191, .28); }
+
+  /* ---------- 首页 ---------- */
+  .source-bar {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--muted); margin-bottom: 16px;
+  }
+  .source-bar b { color: var(--text); font-weight: 600; }
+  .source-bar .link { color: var(--accent); cursor: pointer; margin-left: auto; }
+  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 15px 17px; position: relative; overflow: hidden; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .kpi:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .kpi::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
+  .kpi.k-red::before { background: var(--red); }
+  .kpi.k-cyan::before { background: var(--cyan); }
+  .kpi.k-amber::before { background: var(--amber); }
+  .kpi.k-green::before { background: var(--green); }
+  .kpi .num { font-size: 27px; font-weight: 800; line-height: 1.15; }
+  .kpi .lbl { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+  .ov-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; margin-bottom: 18px; }
+  .ov-grid2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; margin-bottom: 18px; }
+  .map-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .map-tab {
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+    font-size: 12.5px; padding: 5px 14px; border-radius: 999px; cursor: pointer;
+  }
+  .map-tab.active { color: var(--text); border-color: var(--accent); background: rgba(61,126,255,.12); }
+  #ov-map { width: 100%; height: 360px; border-radius: 10px; }
+  .map-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .chart { width: 100%; }
+  .chart-md { height: 240px; }
+  .board-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tool-input, .tool-select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 13px; padding: 7px 12px;
+  }
+  .tool-input { width: 200px; }
+  .board-scroll { max-height: 380px; overflow-y: auto; }
+  .ev-name { font-weight: 600; }
+  .ev-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th.sortable::after { content: " ⇅"; opacity: .45; font-size: 11px; }
+  th.sortable.asc::after { content: " ↑"; opacity: 1; color: var(--accent); }
+  th.sortable.desc::after { content: " ↓"; opacity: 1; color: var(--accent); }
+
+  /* 事件详情面板 */
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 22px; font-size: 13.5px; }
+  .meta-grid .k { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  .risk-box, .advice-box {
+    border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7; margin-top: 12px;
+  }
+  .risk-box { background: rgba(244,87,77,.07); border: 1px solid rgba(244,87,77,.28); }
+  .advice-box { background: rgba(45,212,191,.06); border: 1px solid rgba(45,212,191,.28); }
   .risk-box b, .advice-box b { display: block; margin-bottom: 4px; font-size: 12px; letter-spacing: 1px; }
   .risk-box b { color: var(--red); }
   .advice-box b { color: var(--cyan); }
   .score-line { font-size: 12px; color: var(--muted); margin-top: 8px; }
-  .ai-badge {
-    display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px;
-    background: rgba(61, 126, 255, .18); color: #7ea8ff; border: 1px solid rgba(61, 126, 255, .5);
-    margin-left: 8px; vertical-align: 1px;
-  }
-  .sample-scroll { max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
-  .sample-scroll table { font-size: 12.5px; }
-  .sample-scroll tbody tr { cursor: pointer; }
-  .sample-scroll tbody tr:hover { background: rgba(45, 212, 191, .07); }
-  @keyframes rowflash {
-    0% { background: rgba(245, 166, 35, .55); }
-    100% { background: transparent; }
-  }
-  #orders-table tbody tr.flash { animation: rowflash 2.2s ease-out; }
-  .check-inline { display: flex; align-items: center; gap: 8px; }
 
-  .table-scroll { max-height: 340px; overflow-y: auto; }
-  .warn-wrap { margin-bottom: 16px; }
-  .warn-wrap summary {
-    font-size: 13px; color: var(--amber); cursor: pointer;
-    background: rgba(245, 166, 35, .08); border: 1px solid rgba(245, 166, 35, .25);
-    border-radius: 8px; padding: 8px 14px; list-style: none;
+  /* ---------- 工作台 ---------- */
+  .wb-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; }
+  .wb-chip {
+    background: rgba(61,126,255,.12); border: 1px solid rgba(61,126,255,.4);
+    color: #9ec1ff; padding: 4px 12px; border-radius: 999px; display: inline-flex; gap: 8px; align-items: center;
   }
-  .warn-wrap summary::before { content: "▸ "; }
-  .warn-wrap[open] summary::before { content: "▾ "; }
-  .warn-bar {
-    background: rgba(245, 166, 35, .1); border: 1px solid rgba(245, 166, 35, .35);
-    color: var(--amber); font-size: 13px; border-radius: 8px;
-    padding: 10px 14px; margin-top: 10px;
+  .wb-chip i { cursor: pointer; font-style: normal; opacity: .8; }
+  .wb-chip i:hover { opacity: 1; color: #fff; }
+  .wb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .wb-toolbar .tool-input { width: 260px; }
+  .wb-toolbar .spacer { flex: 1; }
+  .pagination { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .pagination .btn { padding: 5px 14px; }
+  .batch-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 12px; font-size: 13px;
   }
+  input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  /* ---------- 工单详情 ---------- */
+  .od-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .od-head .od-id { font-size: 17px; font-weight: 700; }
+  .od-head .spacer { flex: 1; }
+  .od-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+  .field-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
+  .field-list .k { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  .field-list .v { font-size: 13.5px; }
+  .raw-content {
+    margin-top: 14px; padding: 12px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-size: 13px; line-height: 1.8; color: #c9d4e8;
+  }
+  .basis-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .basis-chip { font-size: 12.5px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); }
+  .basis-chip.ok { border-color: rgba(52,199,123,.45); color: var(--green); }
+  .basis-chip.no { border-color: rgba(244,87,77,.45); color: var(--red); }
+  .basis-chip.na { color: var(--muted); }
+  .conclusion {
+    background: rgba(61,126,255,.1); border: 1px solid rgba(61,126,255,.35);
+    border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 8px;
+  }
+  .review-log { font-size: 12.5px; color: var(--muted); line-height: 2; }
+  .scroll-y { max-height: 330px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+
+  /* ---------- 设置抽屉 ---------- */
+  #drawer-mask {
+    position: fixed; inset: 0; background: rgba(5,9,17,.6); z-index: 90;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  #drawer-mask.show { opacity: 1; pointer-events: auto; }
+  #settings-drawer {
+    position: fixed; top: 0; right: -460px; width: 440px; height: 100vh; z-index: 95;
+    background: var(--panel); border-left: 1px solid var(--border);
+    transition: right .28s ease; overflow-y: auto; padding: 22px 24px 40px;
+  }
+  #settings-drawer.open { right: 0; }
+  .drawer-head { display: flex; align-items: center; margin-bottom: 18px; }
+  .drawer-head h3 { font-size: 16px; }
+  .drawer-close { margin-left: auto; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; }
+  .drawer-close:hover { color: var(--text); }
+  .st-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .st-chip { background: var(--bg); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--muted); padding: 5px 13px; }
+  .st-chip b { color: var(--text); font-weight: 600; }
+  .st-section { margin-bottom: 20px; }
+  .st-section > h4 { font-size: 13px; color: var(--text); margin-bottom: 10px; font-weight: 700; }
+  .file-select, .webhook-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 13px; padding: 9px 12px; margin-top: 6px;
+  }
+  #drop-zone {
+    border: 1.5px dashed #33456b; border-radius: 10px; padding: 20px; text-align: center;
+    cursor: pointer; transition: all .15s ease; background: rgba(61,126,255,.03); font-size: 13px;
+  }
+  #drop-zone:hover, #drop-zone.drag { border-color: var(--accent); background: rgba(61,126,255,.08); }
+  .file-name { margin-top: 8px; font-size: 12.5px; color: var(--cyan); font-weight: 600; }
+  .data-preview {
+    display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px; padding: 10px 14px;
+    background: rgba(45,212,191,.06); border: 1px solid rgba(45,212,191,.3); border-radius: 10px;
+  }
+  .dp-item b { display: block; font-size: 14.5px; color: var(--cyan); }
+  .dp-item span { font-size: 11.5px; color: var(--muted); }
+  .dp-note { font-size: 12px; color: var(--muted); width: 100%; }
+  .scope-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .scope-card {
+    display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px;
+    font-size: 12.5px; text-align: center; transition: all .15s ease;
+  }
+  .scope-card b { font-size: 13px; }
+  .scope-card span { font-size: 11px; color: var(--muted); }
+  .scope-card input { display: none; }
+  .scope-card:has(input:checked) { border-color: var(--accent); background: rgba(61,126,255,.1); }
+  .strategy-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .strategy-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 6px; text-align: center; cursor: pointer; transition: all .15s ease; position: relative;
+  }
+  .strategy-card:hover { border-color: var(--accent); }
+  .strategy-card.sel { border-color: var(--accent); background: rgba(61,126,255,.1); }
+  .strategy-card.sel::after { content: "✓"; position: absolute; top: 6px; right: 10px; color: var(--accent); font-weight: 700; }
+  .strategy-card b { display: block; font-size: 13.5px; margin-bottom: 3px; }
+  .strategy-card span { font-size: 11.5px; color: var(--muted); }
+  .param-row { margin-bottom: 14px; }
+  .param-row label { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .param-row label b { color: var(--text); font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .param-tip { font-size: 11px; color: #5d6b85; margin-top: 3px; line-height: 1.5; }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin: 6px 0 12px; }
+  .llm-row { gap: 18px; }
+  .llm-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .admin-details summary, details summary { font-size: 12px; color: #5d6b85; cursor: pointer; }
+  details p { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
+  .adv-line { font-size: 12.5px; font-weight: 600; margin: 14px 0 8px; }
+
+  /* ---------- 进度遮罩 / toast ---------- */
+  #progress-overlay {
+    position: fixed; inset: 0; z-index: 98; background: rgba(8,13,24,.88);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .prog-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 30px 40px; width: 440px; text-align: center; }
+  .prog-ico { font-size: 30px; margin-bottom: 12px; animation: spin 2.4s linear infinite; display: inline-block; }
+  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  .prog-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; min-height: 22px; }
+  .prog-bar { height: 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
+  .prog-fill { height: 100%; width: 5%; border-radius: 999px; background: linear-gradient(90deg, #274a8f, #3d7eff, #2dd4bf); transition: width .7s ease; }
+  .prog-sub { font-size: 12px; color: var(--muted); margin-top: 12px; }
   #toast {
     position: fixed; top: 22px; left: 50%; transform: translateX(-50%);
     background: #1c2942; border: 1px solid var(--border); color: var(--text);
     padding: 11px 22px; border-radius: 8px; font-size: 14px; z-index: 99;
-    opacity: 0; pointer-events: none; transition: opacity .25s;
-    max-width: 640px;
+    opacity: 0; pointer-events: none; transition: opacity .25s; max-width: 640px;
   }
   #toast.show { opacity: 1; }
   #toast.err { border-color: var(--red); color: #ffb4ae; }
 
-  /* ---------- 分析进度遮罩 ---------- */
-  #progress-overlay {
-    position: fixed; inset: 0; z-index: 98;
-    background: rgba(8, 13, 24, .85);
-    display: flex; align-items: center; justify-content: center;
-  }
-  .prog-card {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 14px; padding: 30px 40px; width: 420px; text-align: center;
-  }
-  .prog-ico { font-size: 30px; margin-bottom: 12px; animation: spin 2.4s linear infinite; display: inline-block; }
-  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-  .prog-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; min-height: 22px; }
-  .prog-bar {
-    height: 8px; border-radius: 999px; background: var(--bg);
-    border: 1px solid var(--border); overflow: hidden;
-  }
-  .prog-fill {
-    height: 100%; width: 5%; border-radius: 999px;
-    background: linear-gradient(90deg, #274a8f, #3d7eff, #2dd4bf);
-    transition: width .7s ease;
-  }
-  .prog-sub { font-size: 12px; color: var(--muted); margin-top: 12px; }
-
   @media (max-width: 1100px) {
-    .config-flow, .board-grid, .charts-row { grid-template-columns: 1fr; }
-    .kpi-row { grid-template-columns: repeat(2, 1fr); }
-    .scope-cards, .strategy-cards { grid-template-columns: 1fr; }
+    .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    .ov-grid, .ov-grid2, .od-grid { grid-template-columns: 1fr; }
+    .main-nav { display: none; }
   }
 </style>
 </head>
@@ -356,243 +323,275 @@
   <div class="brand">
     <div class="logo">12345</div>
     <div>
-      <h1>高频事件智能预警与处置辅助系统</h1>
+      <h1>12345热线AI智能工单系统</h1>
       <p>SHUNDE · 政务热线工单智能分析平台</p>
     </div>
   </div>
-  <div class="top-tags">
-    <span class="tag">核心分析 · 完全离线</span>
-    <span class="tag">AI 事件识别</span>
-    <span class="tag">V2.0</span>
+  <nav class="main-nav">
+    <button class="nav-btn active" id="nav-overview" onclick="goOverview()">总览</button>
+    <button class="nav-btn" id="nav-workbench" onclick="goWorkbench()">工单工作台</button>
+  </nav>
+  <div class="top-right">
+    <span class="data-status loading" id="data-status"><span class="dot"></span><span id="data-status-text">正在连接数据源…</span></span>
+    <span class="badge b-gray">核心分析 · 离线</span>
+    <button class="gear-btn" title="系统设置" onclick="openDrawer()">⚙</button>
   </div>
 </header>
 
 <main>
-  <div class="intro-note">核心分析完全离线：工单数据在本地即可完成全部识别分析，无需连接外部 AI 服务；AI 建议增强为可选能力，仅在管理员启用后生效。</div>
+  <!-- ================= 第一页 全局总览 ================= -->
+  <section id="page-overview">
+    <div class="source-bar" id="source-bar"></div>
+    <div class="kpi-row" id="kpi-row"></div>
 
-  <!-- ================= 页面① 智能分析入口 ================= -->
-  <section id="page-config">
-    <div class="config-flow">
-
-      <div class="card flow-card">
-        <h2>① 选择工单数据</h2>
-        <div id="drop-zone">
-          <input type="file" id="file-input" accept=".csv,.xlsx" hidden>
-          <div class="dz-ico">📄</div>
-          <p>点击选择或拖拽 CSV / Excel 工单文件到此处</p>
-          <p class="muted">自动识别中英文列名 · 内置去重与清洗</p>
-          <div class="file-name" id="file-name"></div>
+    <div class="ov-grid">
+      <div class="card">
+        <h2>区域态势<span class="h-note">点击区域进入工作台核查</span></h2>
+        <div class="map-tabs" id="map-tabs">
+          <button class="map-tab active" data-mode="total">全部工单</button>
+          <button class="map-tab" data-mode="multi">重复工单</button>
+          <button class="map-tab" data-mode="high">高优先事件</button>
         </div>
-        <div class="local-files">
-          <label>或直接选择本地数据文件（真实数据放入 data/input 目录即可识别）</label>
-          <select class="file-select" id="file-select">
-            <option value="">（使用内置样例数据）</option>
+        <div id="ov-map"></div>
+        <div class="map-note">气泡大小 = 工单量（按区域聚合）· 坐标为顺德十镇街中心点</div>
+      </div>
+
+      <div class="card">
+        <h2>高频事件榜<span class="h-note">点击行进入工作台核查</span></h2>
+        <div class="board-tools">
+          <input class="tool-input" id="f-q" placeholder="搜索事件名称 / 编号…">
+          <select class="tool-select" id="f-area"><option value="">全部区域</option></select>
+          <select class="tool-select" id="f-level">
+            <option value="">全部风险等级</option>
+            <option value="高关注">高关注</option>
+            <option value="中关注">中关注</option>
+            <option value="一般">一般</option>
+            <option value="需人工研判">需人工研判</option>
           </select>
+          <span class="h-note" id="board-count"></span>
         </div>
-        <div class="data-preview hidden" id="data-preview">
-          <div class="dp-item"><b id="dp-rows">—</b><span>工单数量</span></div>
-          <div class="dp-item"><b id="dp-range">—</b><span>时间范围</span></div>
-          <div class="dp-item" id="dp-area-box"><b id="dp-areas">—</b><span>涉及区域</span></div>
-          <div class="dp-note" id="dp-note"></div>
-        </div>
-        <button class="btn btn-sample" id="btn-sample">使用内置样例数据快速体验<span class="btn-sub">37 条工单 · 5 类典型高频事件</span></button>
-      </div>
-
-      <div class="card flow-card">
-        <h2>② 分析时间范围</h2>
-        <div class="scope-cards">
-          <label class="scope-card">
-            <input type="radio" name="scope" value="all" checked>
-            <div class="sc-body"><b>全部数据</b><span>分析全量工单</span></div>
-          </label>
-          <label class="scope-card">
-            <input type="radio" name="scope" value="d30">
-            <div class="sc-body"><b>最近 30 天</b><span>聚焦近期动态</span></div>
-          </label>
-          <label class="scope-card">
-            <input type="radio" name="scope" value="d60">
-            <div class="sc-body"><b>最近 60 天</b><span>覆盖近两月</span></div>
-          </label>
+        <div class="board-scroll">
+          <table class="clickable" id="event-table">
+            <thead>
+              <tr>
+                <th data-key="event_id" class="sortable">编号</th>
+                <th data-key="name" class="sortable">事件</th>
+                <th data-key="area" class="sortable">区域</th>
+                <th data-key="frequency" class="sortable">频次</th>
+                <th data-key="last_7d" class="sortable">近7天</th>
+                <th data-key="trend" class="sortable">趋势</th>
+                <th data-key="risk_level" class="sortable">风险等级</th>
+                <th data-key="priority_score" class="sortable">优先级</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
+    </div>
 
-      <div class="card flow-card">
-        <h2>③ 分析策略</h2>
-        <div class="strategy-cards">
-          <div class="strategy-card sel" data-strategy="default"><b>推荐</b><span>适合日常分析</span></div>
-          <div class="strategy-card" data-strategy="sensitive"><b>灵敏</b><span>适合风险预警</span></div>
-          <div class="strategy-card" data-strategy="strict"><b>严格</b><span>减少误报</span></div>
+    <div class="ov-grid2">
+      <div class="card">
+        <h2>整体趋势<span class="h-note">辅助判断全局变化</span></h2>
+        <div class="chart chart-md" id="ov-trend"></div>
+      </div>
+      <div class="card">
+        <h2>事件深度分析<span class="h-note">选中榜单事件查看</span></h2>
+        <div id="ev-empty" class="muted" style="padding:30px 10px;font-size:13px">从高频事件榜选择一个事件，查看趋势、风险与处置建议。</div>
+        <div id="ev-body" class="hidden">
+          <div class="meta-grid" id="ev-meta"></div>
+          <div style="margin-top:14px" class="chart chart-md" id="ev-trend"></div>
+          <div class="risk-box" id="ev-risk"></div>
+          <div class="advice-box" id="ev-advice"></div>
         </div>
       </div>
-
-      <div class="card flow-card start-card">
-        <div class="expect-line">本次分析将自动识别：<b>高频事件 · 趋势 · 风险 · 重点区域 · 处置建议</b></div>
-        <button class="btn primary big" id="btn-analyze">开始智能分析</button>
-
-        <details class="adv-settings">
-          <summary>⚙ 高级分析设置</summary>
-          <div class="adv-body">
-            <div class="param-row">
-              <label>高频事件触发阈值 <b id="v-freq">3</b></label>
-              <input type="range" id="p-freq" min="2" max="15" value="3">
-              <div class="param-tip">同一事件的工单达到该数量才判定为高频事件；阈值越高，结果越少越严格</div>
-            </div>
-            <div class="param-row">
-              <label>事件相似度阈值 <b id="v-eps">0.50</b></label>
-              <input type="range" id="p-eps" min="0.1" max="0.9" step="0.05" value="0.5">
-              <div class="param-tip">仅对小批量语义聚类生效；大数据量自动采用标签分组路线</div>
-            </div>
-            <div class="param-row">
-              <label>最少相似工单数 <b id="v-min">2</b></label>
-              <input type="range" id="p-min" min="2" max="10" value="2">
-              <div class="param-tip">构成一个事件簇所需的最少相似工单数量</div>
-            </div>
-            <div class="check-row">
-              <input type="checkbox" id="p-emb">
-              <span>启用本地语义向量增强（可选，模型缺失时自动回退，不影响使用）</span>
-            </div>
-            <div class="adv-line">智能建议增强</div>
-            <div class="check-row llm-row">
-              <label><input type="radio" name="llm_mode" value="off" checked> 不启用</label>
-              <label><input type="radio" name="llm_mode" value="configured"> 使用已配置的 AI 服务（DeepSeek）</label>
-            </div>
-            <details class="admin-details">
-              <summary>管理员设置（自定义 AI 服务密钥）</summary>
-              <input class="webhook-input" id="p-llm-key" type="password"
-                     placeholder="DeepSeek API Key（留空则使用本机已配置密钥）">
-            </details>
-            <div class="adv-line">结果流转</div>
-            <input class="webhook-input" id="p-webhook" type="password"
-                   placeholder="飞书群机器人 Webhook 地址（留空则跳过推送，分析完成后亦可在结果页推送）">
-            <details>
-              <summary>风险评分规则说明</summary>
-              <p>优先级 = 频次分×35% + 趋势分×30% + 集中度分×15% + 敏感度分×20%<br>
-                 趋势窗口：近 3 天 vs 基线 7 天<br>
-                 风险等级：≥70 高关注 · ≥40 中关注 · 其余 一般</p>
-            </details>
-          </div>
-        </details>
-
-        <div class="card-foot">12345 高频事件智能预警与处置辅助系统 · 顺德区政务热线智能分析 · V2.0</div>
-      </div>
-
     </div>
   </section>
 
-  <!-- ================= 页面② 分析结果 ================= -->
-  <section id="page-results" class="hidden">
-    <div class="results-head">
-      <button class="btn small" id="btn-back">← 返回参数调整</button>
-      <div class="run-summary" id="run-summary"></div>
-      <a class="btn small" href="/api/download/csv">下载结果 CSV</a>
-      <a class="btn small" href="/api/download/excel">下载结果 Excel</a>
-      <button class="btn small" id="btn-feishu">推送飞书</button>
-    </div>
-
-    <div id="warnings"></div>
-    <div class="kpi-row" id="kpi-row"></div>
-
-    <div class="card" style="margin-bottom:20px">
-      <h2>高频事件看板<span class="h-note">点击表头排序 · 点击行查看详情</span></h2>
-      <div class="board-tools">
-        <input class="tool-input" id="f-q" placeholder="搜索事件名称 / 编号…">
-        <select class="tool-select" id="f-area"><option value="">全部区域</option></select>
-        <select class="tool-select" id="f-level">
-          <option value="">全部风险等级</option>
+  <!-- ================= 第二页 工单工作台 ================= -->
+  <section id="page-workbench" class="hidden">
+    <div class="card">
+      <h2>工单工作台<span class="h-note">搜索 / 筛选 / 排序 / 批量核查</span></h2>
+      <div class="wb-chips" id="wb-chips"></div>
+      <div class="wb-toolbar">
+        <input class="tool-input" id="wb-q" placeholder="搜索工单编号 / 标题 / 诉求内容…">
+        <select class="tool-select" id="wb-area"><option value="">全部区域</option></select>
+        <select class="tool-select" id="wb-multi">
+          <option value="">重复状态</option>
+          <option value="1">多频工单</option>
+          <option value="0">非多频</option>
+        </select>
+        <select class="tool-select" id="wb-level">
+          <option value="">风险等级</option>
           <option value="高关注">高关注</option>
           <option value="中关注">中关注</option>
           <option value="一般">一般</option>
-          <option value="需人工研判">需人工研判</option>
         </select>
-        <span class="h-note" id="board-count"></span>
+        <select class="tool-select" id="wb-review">
+          <option value="">核查状态</option>
+          <option value="待核查">待核查</option>
+          <option value="已确认">已确认</option>
+          <option value="误判">误判</option>
+          <option value="重点">重点</option>
+          <option value="待定">待定</option>
+        </select>
+        <select class="tool-select" id="wb-sort">
+          <option value="default">待核查+高优先优先</option>
+          <option value="freq">按频次</option>
+          <option value="time">按时间最新</option>
+        </select>
+        <span class="spacer"></span>
+        <a class="btn small" href="/api/download/csv">导出 CSV</a>
+        <a class="btn small" href="/api/download/excel">导出 Excel</a>
+        <button class="btn small" id="btn-feishu">推送飞书</button>
       </div>
-      <div class="board-scroll">
-        <table class="clickable" id="event-table">
+      <div class="batch-bar hidden" id="batch-bar">
+        <span id="batch-count">已选 0 条</span>
+        <button class="btn small" onclick="batchReview('已确认')">标记已确认</button>
+        <button class="btn small danger" onclick="batchReview('误判')">标记误判</button>
+        <button class="btn small" onclick="batchReview('重点')">标记重点</button>
+        <button class="btn small" onclick="batchReview('待定')">待定</button>
+        <button class="btn small" onclick="batchReview('')">清除标记</button>
+      </div>
+      <div>
+        <table class="clickable" id="wb-table">
           <thead>
             <tr>
-              <th data-key="event_id" class="sortable">编号</th>
-              <th data-key="name" class="sortable">事件</th>
-              <th data-key="area" class="sortable">区域</th>
-              <th data-key="frequency" class="sortable">频次</th>
-              <th data-key="last_7d" class="sortable">近7天</th>
-              <th data-key="trend" class="sortable">趋势</th>
-              <th data-key="risk_level" class="sortable">风险等级</th>
-              <th data-key="priority_score" class="sortable">优先级</th>
+              <th style="width:34px"><input type="checkbox" id="wb-checkall"></th>
+              <th>工单号</th><th>标题 / 诉求</th><th>区域</th><th>事件</th>
+              <th>频次</th><th>风险等级</th><th>核查状态</th><th>时间</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>事件详情</h2>
-      <div id="detail-empty">点击上方看板中的事件，查看详细画像、趋势与处置建议</div>
-      <div id="detail-body" class="hidden">
-        <div class="detail-grid-a">
-          <div>
-            <div class="meta-grid" id="detail-meta"></div>
-            <div class="risk-box" id="risk-box"></div>
-            <div class="advice-box" id="advice-box"></div>
-          </div>
-          <div class="chart-box">
-            <h3>时间趋势</h3>
-            <div class="chart chart-lg" id="chart-trend"></div>
-          </div>
-        </div>
-        <div class="detail-grid-b">
-          <div class="chart-box">
-            <h3 id="area-chart-title">区域分布</h3>
-            <div class="chart chart-lg" id="chart-area"></div>
-            <div class="area-note" id="area-note"></div>
-          </div>
-          <div>
-            <h3>典型工单<span class="h-note">点击可在下方完整工单表中定位来源</span></h3>
-            <div class="sample-scroll">
-              <table id="sample-table">
-                <thead><tr><th style="width:160px">工单编号</th><th>诉求内容</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>完整工单表<span class="h-note">无确切时分的数据仅显示日期（由工单编号解析）</span></h2>
-      <div class="table-scroll">
-        <table id="orders-table">
-          <thead>
-            <tr>
-              <th>工单编号</th><th>原始诉求</th><th>核心主体</th><th>核心事件</th>
-              <th>区域</th><th>提交时间</th><th>聚类频次</th><th>是否多频</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div class="pagination">
+        <button class="btn" id="wb-prev">上一页</button>
+        <span id="wb-pageinfo">第 1 页</span>
+        <button class="btn" id="wb-next">下一页</button>
+        <span style="flex:1"></span>
+        <span id="wb-total"></span>
       </div>
     </div>
   </section>
+
+  <!-- ================= 第三页 工单详情 ================= -->
+  <section id="page-order" class="hidden">
+    <div id="order-root"></div>
+  </section>
 </main>
 
+<!-- ================= 设置抽屉 ================= -->
+<div id="drawer-mask" onclick="closeDrawer()"></div>
+<aside id="settings-drawer">
+  <div class="drawer-head">
+    <h3>⚙ 系统设置</h3>
+    <button class="drawer-close" onclick="closeDrawer()">×</button>
+  </div>
+  <div class="st-summary" id="st-summary"></div>
+
+  <div class="st-section">
+    <h4>数据源</h4>
+    <div id="drop-zone">
+      <input type="file" id="file-input" accept=".csv,.xlsx" hidden>
+      <p>点击选择或拖拽 CSV / Excel 工单文件</p>
+      <div class="file-name" id="file-name"></div>
+    </div>
+    <label class="muted" style="font-size:12px;display:block;margin-top:10px">或选择本地数据文件（放入 data/input 目录即可识别）</label>
+    <select class="file-select" id="file-select"><option value="">（使用内置样例数据）</option></select>
+    <div class="data-preview hidden" id="data-preview">
+      <div class="dp-item"><b id="dp-rows">—</b><span>工单数量</span></div>
+      <div class="dp-item"><b id="dp-range">—</b><span>时间范围</span></div>
+      <div class="dp-item" id="dp-area-box"><b id="dp-areas">—</b><span>涉及区域</span></div>
+      <div class="dp-note" id="dp-note"></div>
+    </div>
+  </div>
+
+  <div class="st-section">
+    <h4>分析范围</h4>
+    <div class="scope-cards">
+      <label class="scope-card"><input type="radio" name="scope" value="all" checked><b>全部数据</b><span>分析全量工单</span></label>
+      <label class="scope-card"><input type="radio" name="scope" value="d30"><b>近30天</b><span>聚焦近期</span></label>
+      <label class="scope-card"><input type="radio" name="scope" value="d60"><b>近60天</b><span>近两月</span></label>
+    </div>
+  </div>
+
+  <div class="st-section">
+    <h4>分析策略</h4>
+    <div class="strategy-cards">
+      <div class="strategy-card sel" data-strategy="default"><b>推荐</b><span>日常分析</span></div>
+      <div class="strategy-card" data-strategy="sensitive"><b>灵敏</b><span>风险预警</span></div>
+      <div class="strategy-card" data-strategy="strict"><b>严格</b><span>减少误报</span></div>
+    </div>
+  </div>
+
+  <button class="btn primary" style="width:100%" id="btn-analyze">重新分析</button>
+  <button class="btn" style="width:100%;margin-top:10px" id="btn-sample">使用内置样例数据快速体验</button>
+
+  <div class="st-section" style="margin-top:22px">
+    <details>
+      <summary>高级AI参数（技术人员）</summary>
+      <div style="padding-top:12px">
+        <div class="param-row">
+          <label>高频事件触发阈值 <b id="v-freq">3</b></label>
+          <input type="range" id="p-freq" min="2" max="15" value="3">
+          <div class="param-tip">同一事件的工单达到该数量才判定为高频事件</div>
+        </div>
+        <div class="param-row">
+          <label>事件相似度阈值 <b id="v-eps">0.50</b></label>
+          <input type="range" id="p-eps" min="0.1" max="0.9" step="0.05" value="0.5">
+          <div class="param-tip">仅对小批量语义聚类生效；大数据量自动采用标签分组</div>
+        </div>
+        <div class="param-row">
+          <label>最少相似工单数 <b id="v-min">2</b></label>
+          <input type="range" id="p-min" min="2" max="10" value="2">
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="p-emb">
+          <span>启用本地语义向量增强（可选，缺失自动回退）</span>
+        </div>
+        <div class="adv-line">智能建议增强</div>
+        <div class="check-row llm-row">
+          <label><input type="radio" name="llm_mode" value="off" checked> 不启用</label>
+          <label><input type="radio" name="llm_mode" value="configured"> 使用已配置的AI服务（DeepSeek）</label>
+        </div>
+        <details class="admin-details">
+          <summary>管理员设置（自定义AI服务密钥）</summary>
+          <input class="webhook-input" id="p-llm-key" type="password" placeholder="DeepSeek API Key（留空则使用本机已配置密钥）">
+        </details>
+        <div class="adv-line">结果流转</div>
+        <input class="webhook-input" id="p-webhook" type="password" placeholder="飞书群机器人 Webhook 地址（留空跳过推送）">
+        <details style="margin-top:12px">
+          <summary>风险评分规则说明</summary>
+          <p>优先级 = 频次分×35% + 趋势分×30% + 集中度分×15% + 敏感度分×20%<br>
+             趋势窗口：近3天 vs 基线7天 · 风险等级：≥70 高关注 · ≥40 中关注</p>
+        </details>
+      </div>
+    </details>
+  </div>
+</aside>
+
+<!-- 进度遮罩 / toast -->
 <div id="progress-overlay" class="hidden">
   <div class="prog-card">
     <div class="prog-ico">⚙️</div>
     <div class="prog-title" id="prog-text">正在加载工单数据…</div>
     <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
-    <div class="prog-sub" id="prog-sub">识别流水线执行中，请稍候</div>
+    <div class="prog-sub" id="prog-sub">系统正在自动分析，请稍候</div>
   </div>
 </div>
-
 <div id="toast"></div>
 
 <script>
-/* ================= 全局状态 ================= */
-const state = { file: null, payload: null, selected: -1, trendChart: null, areaChart: null, leafletMap: null };
+/* ================= 全局状态与工具 ================= */
+const state = { payload: null, overview: null, evSelected: -1, mapMode: "total", selFile: null };
+const wb = { page: 1, size: 50, q: "", area: "", multi: "", level: "", review: "", event: "", sort: "default", selected: new Set() };
 const $ = (id) => document.getElementById(id);
 
-/* ================= 通用 ================= */
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 function toast(msg, isErr) {
   const t = $("toast");
   t.textContent = msg;
@@ -600,18 +599,14 @@ function toast(msg, isErr) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.className = "", 3800);
 }
-function esc(s) {
-  return String(s == null ? "" : s).replace(/[&<>"']/g,
-    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-function showPage(name) {
-  $("page-config").classList.toggle("hidden", name !== "config");
-  $("page-results").classList.toggle("hidden", name !== "results");
-  window.scrollTo(0, 0);
-}
 function riskBadge(level) {
   const map = { "高关注": "b-red", "中关注": "b-amber", "一般": "b-green", "需人工研判": "b-gray" };
   return '<span class="badge ' + (map[level] || "b-gray") + '">' + esc(level || "—") + "</span>";
+}
+function reviewBadge(status) {
+  if (!status) return '<span class="badge b-blue">待核查</span>';
+  const map = { "已确认": "b-green", "误判": "b-red", "重点": "b-amber", "待定": "b-gray" };
+  return '<span class="badge ' + (map[status] || "b-gray") + '">' + esc(status) + "</span>";
 }
 function trendSpan(t) {
   if (t === "上升") return '<span class="trend-up">▲ 上升</span>';
@@ -619,114 +614,49 @@ function trendSpan(t) {
   if (t === "平稳") return '<span class="trend-flat">● 平稳</span>';
   return '<span class="trend-unknown">○ 无法判断</span>';
 }
-
-/* ================= 页面① 交互 ================= */
-const dz = $("drop-zone"), fi = $("file-input");
-dz.addEventListener("click", () => fi.click());
-dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
-dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-dz.addEventListener("drop", e => {
-  e.preventDefault(); dz.classList.remove("drag");
-  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
-});
-fi.addEventListener("change", () => { if (fi.files.length) setFile(fi.files[0]); });
-function setFile(f) {
-  if (!/\.(csv|xlsx)$/i.test(f.name)) { toast("请上传 CSV 或 Excel 文件", true); return; }
-  state.file = f;
-  $("file-select").value = "";
-  $("file-name").textContent = "已选择：" + f.name + "（" + (f.size / 1024).toFixed(1) + " KB）";
-  loadPreview({ file: f });
+/* ================= 路由 ================= */
+function showPage(name) {
+  ["overview", "workbench", "order"].forEach(p =>
+    $("page-" + p).classList.toggle("hidden", p !== name));
+  $("nav-overview").classList.toggle("active", name === "overview");
+  $("nav-workbench").classList.toggle("active", name !== "overview");
+  window.scrollTo(0, 0);
 }
-
-/* 本地数据文件列表（真实数据放入 data/input 即出现） */
-async function loadLocalFiles() {
-  try {
-    const res = await fetch("/api/datafiles");
-    const data = await res.json();
-    const sel = $("file-select");
-    sel.innerHTML = '<option value="">（使用内置样例数据）</option>';
-    (data.files || []).forEach(f => {
-      const opt = document.createElement("option");
-      opt.value = f.name;
-      opt.textContent = f.name + "（" + f.size_mb + " MB）";
-      sel.appendChild(opt);
-    });
-  } catch (e) { /* 列表加载失败不影响主流程 */ }
+function goOverview() { location.hash = "#/overview"; }
+function goWorkbench(filters) {
+  if (filters) Object.assign(wb, filters), wb.page = 1;
+  location.hash = "#/workbench";
 }
-loadLocalFiles();
-$("file-select").addEventListener("change", () => {
-  state.file = null; fi.value = ""; $("file-name").textContent = "";
-  loadPreview({ datafile: $("file-select").value || "sample.csv" });
-});
-
-/* 数据加载确认：真实读取条数/时间范围/区域数，算不出的项不显示、不伪造 */
-async function loadPreview(params) {
-  const box = $("data-preview");
-  box.classList.remove("hidden");
-  $("dp-rows").textContent = "…";
-  $("dp-range").textContent = "…";
-  $("dp-areas").textContent = "…";
-  $("dp-note").textContent = "正在读取数据…";
-  try {
-    const fd = new FormData();
-    if (params.file) fd.append("file", params.file);
-    else fd.append("datafile", params.datafile);
-    const res = await fetch("/api/preview", { method: "POST", body: fd });
-    const d = await res.json();
-    if (!d.ok) {
-      $("dp-note").textContent = "数据读取失败：" + (d.error || "未知错误");
-      return;
-    }
-    $("dp-rows").textContent = d.rows.toLocaleString() + " 条";
-    $("dp-range").textContent = (d.time_min && d.time_max)
-      ? (d.time_min + " ~ " + d.time_max) : "无时间字段";
-    if (d.areas != null) {
-      $("dp-area-box").style.display = "";
-      $("dp-areas").textContent = d.areas + " 个";
-    } else {
-      $("dp-area-box").style.display = "none";
-    }
-    $("dp-note").textContent = "数据已加载，可开始分析";
-  } catch (e) {
-    $("dp-note").textContent = "数据预览失败，不影响分析";
+function goOrder(oid) { location.hash = "#/order/" + encodeURIComponent(oid); }
+async function route() {
+  const h = location.hash || "#/overview";
+  if (h.startsWith("#/order/")) {
+    showPage("order");
+    await renderOrder(decodeURIComponent(h.slice(8)));
+  } else if (h.startsWith("#/workbench")) {
+    showPage("workbench");
+    await renderWorkbench();
+  } else {
+    showPage("overview");
   }
 }
+window.addEventListener("hashchange", route);
 
-["freq", "eps", "min"].forEach(k => {
-  $("p-" + k).addEventListener("input", () => {
-    $("v-" + k).textContent = k === "eps"
-      ? parseFloat($("p-eps").value).toFixed(2) : $("p-" + k).value;
-  });
-});
-
-$("btn-sample").addEventListener("click", () => {
-  state.file = null; $("file-name").textContent = ""; $("file-select").value = ""; runAnalysis();
-});
-$("btn-analyze").addEventListener("click", () => runAnalysis());
-$("btn-back").addEventListener("click", () => showPage("config"));
-$("btn-feishu").addEventListener("click", pushFeishu);
-
-/* ================= 分析 ================= */
-function llmEnabled() {
-  const r = document.querySelector('input[name="llm_mode"]:checked');
-  return r && r.value === "configured";
-}
+/* ================= 进度遮罩 ================= */
 let progTimer = null;
 function startProgress(useLLM) {
   const stages = [
     "正在加载并清洗工单数据…",
-    "文本标准化与实体抽取中…",
-    "事件聚类与多频识别中…",
+    "AI 正在理解工单内容…",
+    "AI 正在识别重复与高频事件…",
     "生成事件画像与趋势…",
-    "风险等级推理中…",
+    "风险与优先级判断中…",
   ];
-  if (useLLM) stages.push("AI 模型推理中，正在生成处置建议…");
-  stages.push("正在整理看板结果…");
+  if (useLLM) stages.push("AI 模型推理中，正在匹配处置建议…");
+  stages.push("正在整理总览数据…");
   let idx = 0;
   $("prog-text").textContent = stages[0];
-  $("prog-sub").textContent = useLLM
-    ? "启用 AI 增强，预计 30~50 秒"
-    : "识别流水线执行中，请稍候";
+  $("prog-sub").textContent = useLLM ? "启用 AI 增强，预计 30~50 秒" : "系统自动分析中，请稍候";
   $("prog-fill").style.width = "5%";
   $("progress-overlay").classList.remove("hidden");
   let pct = 5;
@@ -741,12 +671,15 @@ function stopProgress() {
   if (progTimer) { clearInterval(progTimer); progTimer = null; }
   $("prog-fill").style.width = "100%";
   $("prog-text").textContent = "分析完成";
-  setTimeout(() => $("progress-overlay").classList.add("hidden"), 400);
+  setTimeout(() => $("progress-overlay").classList.add("hidden"), 350);
 }
 
-async function runAnalysis() {
-  const btn = $("btn-analyze");
-  btn.disabled = true; btn.textContent = "正在执行识别流水线…";
+/* ================= 启动：系统默认已在工作 ================= */
+function llmEnabled() {
+  const r = document.querySelector('input[name="llm_mode"]:checked');
+  return r && r.value === "configured";
+}
+async function runAnalysis(opts) {
   const fd = new FormData();
   fd.append("freq_threshold", $("p-freq").value);
   fd.append("eps", $("p-eps").value);
@@ -755,82 +688,212 @@ async function runAnalysis() {
   fd.append("scope", (document.querySelector('input[name="scope"]:checked') || {}).value || "all");
   fd.append("use_llm", llmEnabled() ? "true" : "false");
   fd.append("llm_key", $("p-llm-key").value.trim());
-  if (state.file) {
-    fd.append("file", state.file);
-  } else if ($("file-select").value) {
-    fd.append("datafile", $("file-select").value);
-  }
+  if (opts && opts.file) fd.append("file", opts.file);
+  else if (opts && opts.datafile != null) fd.append("datafile", opts.datafile);
+  else if ($("file-select").value) fd.append("datafile", $("file-select").value);
+
   startProgress(llmEnabled());
   try {
     const res = await fetch("/api/analyze", { method: "POST", body: fd });
     const data = await res.json();
     stopProgress();
-    if (!data.ok) { toast(data.error || "分析失败", true); return; }
+    if (!data.ok) { toast(data.error || "分析失败", true); return false; }
     state.payload = data.payload;
-    showPage("results");   // 先切页保证容器可见，再初始化图表
-    renderResults();
+    await loadOverview();
+    renderOverview();
+    return true;
   } catch (e) {
     stopProgress();
     toast("请求失败：" + e, true);
-  } finally {
-    btn.disabled = false; btn.textContent = "开 始 分 析";
+    return false;
+  }
+}
+async function loadOverview() {
+  try {
+    const r = await fetch("/api/overview");
+    const d = await r.json();
+    if (d.ok) state.overview = d;
+  } catch (e) { /* 总览加载失败不阻断 */ }
+}
+async function boot() {
+  try {
+    const b = await (await fetch("/api/boot")).json();
+    const ok = await runAnalysis({ datafile: b.default_file || "" });
+    const st = $("data-status");
+    if (ok) {
+      st.classList.remove("loading");
+      $("data-status-text").textContent = "数据已同步";
+    } else {
+      $("data-status-text").textContent = "数据源连接失败";
+    }
+  } catch (e) {
+    $("data-status-text").textContent = "服务未就绪";
+  }
+  route();
+}
+
+/* ================= 设置抽屉 ================= */
+function openDrawer() {
+  renderDrawerSummary();
+  $("settings-drawer").classList.add("open");
+  $("drawer-mask").classList.add("show");
+}
+function closeDrawer() {
+  $("settings-drawer").classList.remove("open");
+  $("drawer-mask").classList.remove("show");
+}
+function renderDrawerSummary() {
+  const scope = (document.querySelector('input[name="scope"]:checked') || {}).value || "all";
+  const scopeName = { all: "全部数据", d30: "近30天", d60: "近60天" }[scope];
+  const strat = document.querySelector(".strategy-card.sel");
+  const src = state.overview
+    ? (state.overview.source.rows.toLocaleString() + " 条工单")
+    : (state.selFile ? state.selFile.name : "内置样例");
+  $("st-summary").innerHTML =
+    '<span class="st-chip">分析模式 <b>' + (strat ? strat.dataset.strategy === "default" ? "推荐" : strat.querySelector("b").textContent : "推荐") + '</b></span>' +
+    '<span class="st-chip">分析范围 <b>' + scopeName + '</b></span>' +
+    '<span class="st-chip">数据源 <b>' + esc(src) + '</b></span>';
+}
+const STRATEGIES = {
+  default: { freq: 3, scope: "all" },
+  sensitive: { freq: 2, scope: "d30" },
+  strict: { freq: 5, scope: "all" },
+};
+document.querySelectorAll(".strategy-card").forEach(card => {
+  card.addEventListener("click", () => {
+    document.querySelectorAll(".strategy-card").forEach(c => c.classList.remove("sel"));
+    card.classList.add("sel");
+    const s = STRATEGIES[card.dataset.strategy];
+    if (!s) return;
+    $("p-freq").value = s.freq;
+    $("v-freq").textContent = s.freq;
+    const radio = document.querySelector('input[name="scope"][value="' + s.scope + '"]');
+    if (radio) radio.checked = true;
+  });
+});
+["freq", "eps", "min"].forEach(k => {
+  $("p-" + k).addEventListener("input", () => {
+    $("v-" + k).textContent = k === "eps"
+      ? parseFloat($("p-eps").value).toFixed(2) : $("p-" + k).value;
+  });
+});
+$("btn-analyze").addEventListener("click", async () => {
+  closeDrawer();
+  await runAnalysis({});
+  toast("分析完成，总览已更新");
+});
+$("btn-sample").addEventListener("click", async () => {
+  state.selFile = null;
+  $("file-select").value = "";
+  $("file-name").textContent = "";
+  closeDrawer();
+  await runAnalysis({ datafile: "" });
+});
+
+/* 数据源：上传 / 本地文件 / 预览 */
+const dz = $("drop-zone"), fi = $("file-input");
+dz.addEventListener("click", () => fi.click());
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+dz.addEventListener("drop", e => {
+  e.preventDefault(); dz.classList.remove("drag");
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+fi.addEventListener("change", () => { if (fi.files.length) setFile(fi.files[0]); });
+function setFile(f) {
+  if (!/\.(csv|xlsx)$/i.test(f.name)) { toast("请上传 CSV 或 Excel 文件", true); return; }
+  state.selFile = f;
+  $("file-select").value = "";
+  $("file-name").textContent = "已选择：" + f.name;
+  loadPreview({ file: f });
+}
+async function loadLocalFiles() {
+  try {
+    const data = await (await fetch("/api/datafiles")).json();
+    const sel = $("file-select");
+    sel.innerHTML = '<option value="">（使用内置样例数据）</option>';
+    (data.files || []).forEach(f => {
+      const opt = document.createElement("option");
+      opt.value = f.name;
+      opt.textContent = f.name + "（" + f.size_mb + " MB）";
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* 忽略 */ }
+}
+$("file-select").addEventListener("change", () => {
+  state.selFile = null; fi.value = ""; $("file-name").textContent = "";
+  loadPreview({ datafile: $("file-select").value || "sample.csv" });
+});
+async function loadPreview(params) {
+  const box = $("data-preview");
+  box.classList.remove("hidden");
+  $("dp-rows").textContent = "…"; $("dp-range").textContent = "…"; $("dp-areas").textContent = "…";
+  $("dp-note").textContent = "正在读取数据…";
+  try {
+    const fd = new FormData();
+    if (params.file) fd.append("file", params.file);
+    else fd.append("datafile", params.datafile);
+    const d = await (await fetch("/api/preview", { method: "POST", body: fd })).json();
+    if (!d.ok) { $("dp-note").textContent = "数据读取失败：" + (d.error || ""); return; }
+    $("dp-rows").textContent = d.rows.toLocaleString() + " 条";
+    $("dp-range").textContent = (d.time_min && d.time_max) ? (d.time_min + " ~ " + d.time_max) : "无时间字段";
+    if (d.areas != null) { $("dp-area-box").style.display = ""; $("dp-areas").textContent = d.areas + " 个"; }
+    else $("dp-area-box").style.display = "none";
+    $("dp-note").textContent = "数据已就绪，点击「重新分析」生效";
+  } catch (e) {
+    $("dp-note").textContent = "数据预览失败，不影响分析";
   }
 }
 
-/* ================= 页面② 渲染 ================= */
-function renderResults() {
-  const p = state.payload;
-  state.selected = -1;
-  $("run-summary").innerHTML =
-    "识别完成：共 <b>" + p.kpis.total_orders + "</b> 条工单，识别出 <b>" +
-    p.kpis.multi_events + "</b> 个多频事件 · 识别路线：" + esc(p.method || "—");
+/* ================= 首页渲染 ================= */
+function renderOverview() {
+  const p = state.payload, ov = state.overview;
+  if (!p) return;
 
-  const ws = p.warnings || [];
-  $("warnings").innerHTML = ws.length
-    ? '<details class="warn-wrap"><summary>识别过程说明（' + ws.length + ' 条，点击展开）</summary>' +
-      ws.map(w => '<div class="warn-bar">⚠ ' + esc(w) + "</div>").join("") + "</details>"
-    : "";
+  // 数据源条
+  const s = ov ? ov.source : {};
+  $("source-bar").innerHTML =
+    "当前数据源：<b>" + (state.selFile ? esc(state.selFile.name) : ($("file-select").value || "12345工单库")) + "</b>" +
+    (s.rows ? " · <b>" + s.rows.toLocaleString() + "</b> 条工单" : "") +
+    (s.time_min ? " · " + s.time_min + " ~ " + s.time_max : "") +
+    " · 识别路线：" + esc(p.method) +
+    '<span class="link" onclick="openDrawer()">⚙ 更换数据源 / 调整策略</span>';
 
-  const k = p.kpis;
+  // KPI（全部可点击进工作台）
+  const rv = ov ? ov.review : { pending: 0, confirmed: 0, rejected: 0 };
+  const multi = ov ? ov.multi_orders : 0;
   $("kpi-row").innerHTML =
-    kpiCard(k.total_orders, "工单总量", "清洗去重后", "") +
-    kpiCard(k.multi_events, "多频事件数", "达到多频阈值", "k-cyan") +
-    kpiCard(k.high_events, "高关注事件", "建议优先处置", "k-red") +
-    kpiCard(k.biggest_event, "最大频次事件", "涉及工单最多", "k-amber", true);
+    kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({})) +
+    kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1" })) +
+    kpiCard(p.kpis.high_events, "高关注事件", "k-red", () => goWorkbench({ level: "高关注" })) +
+    kpiCard(rv.pending.toLocaleString(), "待核查", "k-amber", () => goWorkbench({ review: "待核查" })) +
+    kpiCard(rv.confirmed.toLocaleString(), "已确认", "k-green", () => goWorkbench({ review: "已确认" })) +
+    kpiCard(rv.rejected.toLocaleString(), "误判", "", () => goWorkbench({ review: "误判" }));
 
-  // 事件看板：填充区域筛选选项，渲染表格（排序/筛选由 renderBoard 处理）
+  // 区域筛选选项
   const areaSel = $("f-area");
   areaSel.innerHTML = '<option value="">全部区域</option>';
-  [...new Set(p.events.map(e => e.area))].filter(a => a && !a.startsWith("（")).sort().forEach(a => {
+  (ov ? ov.areas : []).forEach(a => {
     const o = document.createElement("option");
-    o.value = a; o.textContent = a;
+    o.value = a.area; o.textContent = a.area;
     areaSel.appendChild(o);
   });
+
   renderBoard();
-
-  // 完整工单表（带 data-oid 供典型工单溯源定位）
-  $("orders-table").querySelector("tbody").innerHTML = p.orders.map(o =>
-    '<tr data-oid="' + esc(o.order_id) + '">' +
-    "<td>" + esc(o.order_id) + "</td>" +
-    "<td>" + esc(o.content) + "</td>" +
-    "<td>" + esc(o.subject || "—") + "</td>" +
-    "<td>" + esc(o.event || "—") + "</td>" +
-    "<td>" + esc(o.area || "—") + "</td>" +
-    "<td>" + esc(o.time || "—") + "</td>" +
-    "<td>" + o.size + "</td>" +
-    "<td>" + (o.multi ? '<span class="badge b-red">多频</span>' : '<span class="badge b-gray">否</span>') + "</td>" +
-    "</tr>").join("");
-
-  $("detail-body").classList.add("hidden");
-  $("detail-empty").classList.remove("hidden");
-  if (p.events.length) selectEvent(0);
+  renderOvMap();
+  renderOvTrend();
+}
+function kpiCard(num, lbl, cls, onclick) {
+  const id = "kpi-" + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => { const el = $(id); if (el && onclick) el.onclick = onclick; }, 0);
+  return '<div class="kpi ' + cls + '" id="' + id + '"><div class="num">' + num +
+    '</div><div class="lbl">' + lbl + "</div></div>";
 }
 
-/* ================= 看板排序与筛选 ================= */
-const state2 = { sortKey: "", sortDir: 1 };   // 空 sortKey = 默认口径（风险等级→频次）
+/* 事件榜（排序 + 筛选，点击进入工作台） */
+const boardSort = { key: "", dir: 1 };
 const LEVEL_RANK = { "高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3 };
 const TREND_RANK = { "上升": 0, "平稳": 1, "无法判断": 2, "下降": 3 };
-
 function boardView() {
   const p = state.payload;
   const q = ($("f-q").value || "").trim().toLowerCase();
@@ -842,14 +905,10 @@ function boardView() {
     (r.e.type || "").toLowerCase().includes(q) ||
     (r.e.subject || "").toLowerCase().includes(q) ||
     (r.e.event_id || "").toLowerCase().includes(q));
-
-  if (!state2.sortKey) {
-    // 默认口径：风险等级 → 频次降序
-    rows.sort((a, b) =>
-      (LEVEL_RANK[a.e.risk_level] ?? 9) - (LEVEL_RANK[b.e.risk_level] ?? 9) ||
-      b.e.frequency - a.e.frequency);
+  if (!boardSort.key) {
+    rows.sort((a, b) => (LEVEL_RANK[a.e.risk_level] ?? 9) - (LEVEL_RANK[b.e.risk_level] ?? 9) || b.e.frequency - a.e.frequency);
   } else {
-    const k = state2.sortKey, dir = state2.sortDir;
+    const k = boardSort.key, dir = boardSort.dir;
     const val = (e) => {
       if (k === "name") return (e.subject.startsWith("（") || e.subject.startsWith("多主体聚合") ? e.type : e.subject) || "";
       if (k === "risk_level") return LEVEL_RANK[e.risk_level] ?? 9;
@@ -865,7 +924,6 @@ function boardView() {
   }
   return rows;
 }
-
 function renderBoard() {
   const rows = boardView();
   $("board-count").textContent = "共 " + rows.length + " 个事件";
@@ -878,8 +936,7 @@ function renderBoard() {
       : (e.type + (e.area && !e.area.startsWith("（") ? " · " + e.area : ""));
     return '<tr data-i="' + r.i + '">' +
       "<td>" + esc(e.event_id) + "</td>" +
-      '<td><div class="ev-name">' + esc(name) + "</div>" +
-      '<div class="ev-sub">' + esc(sub) + "</div></td>" +
+      '<td><div class="ev-name">' + esc(name) + '</div><div class="ev-sub">' + esc(sub) + "</div></td>" +
       "<td>" + esc(e.area) + "</td>" +
       "<td><b>" + e.frequency + "</b></td>" +
       "<td>" + e.last_7d + "</td>" +
@@ -888,31 +945,24 @@ function renderBoard() {
       "<td>" + Number(e.priority_score || 0).toFixed(1) + "</td>" +
       "</tr>";
   }).join("");
-  $("event-table").querySelectorAll("tbody tr").forEach(tr =>
-    tr.addEventListener("click", () => selectEvent(+tr.dataset.i)));
-  // 表头排序指示
+  $("event-table").querySelectorAll("tbody tr").forEach(tr => {
+    tr.addEventListener("click", ev => {
+      const e = state.payload.events[+tr.dataset.i];
+      goWorkbench({ event: e.event_id });
+    });
+    tr.addEventListener("dblclick", () => selectEvent(+tr.dataset.i));
+  });
   $("event-table").querySelectorAll("th.sortable").forEach(th => {
     th.classList.remove("asc", "desc");
-    if (th.dataset.key === state2.sortKey)
-      th.classList.add(state2.sortDir === 1 ? "asc" : "desc");
+    if (th.dataset.key === boardSort.key)
+      th.classList.add(boardSort.dir === 1 ? "asc" : "desc");
   });
-  // 恢复行选中态
-  if (state.selected >= 0) {
-    $("event-table").querySelectorAll("tbody tr").forEach(tr =>
-      tr.classList.toggle("sel", +tr.dataset.i === state.selected));
-  }
 }
-
 document.querySelectorAll("#event-table th.sortable").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.dataset.key;
-    if (state2.sortKey === k) {
-      state2.sortDir *= -1;
-    } else {
-      state2.sortKey = k;
-      // 数值/排序型字段默认降序更直观，文本默认升序
-      state2.sortDir = ["frequency", "last_7d", "priority_score"].includes(k) ? -1 : 1;
-    }
+    if (boardSort.key === k) boardSort.dir *= -1;
+    else { boardSort.key = k; boardSort.dir = ["frequency", "last_7d", "priority_score"].includes(k) ? -1 : 1; }
     renderBoard();
   });
 });
@@ -920,108 +970,60 @@ $("f-q").addEventListener("input", renderBoard);
 $("f-area").addEventListener("change", renderBoard);
 $("f-level").addEventListener("change", renderBoard);
 
-/* ================= 分析策略 ================= */
-const STRATEGIES = {
-  default:   { freq: 3, scope: "all" },
-  sensitive: { freq: 2, scope: "d30" },
-  strict:    { freq: 5, scope: "all" },
-};
-document.querySelectorAll(".strategy-card").forEach(card => {
-  card.addEventListener("click", () => {
-    document.querySelectorAll(".strategy-card").forEach(c => c.classList.remove("sel"));
-    card.classList.add("sel");
-    const s = STRATEGIES[card.dataset.strategy];
-    if (!s) return;
-    $("p-freq").value = s.freq;
-    $("v-freq").textContent = s.freq;
-    const radio = document.querySelector('input[name="scope"][value="' + s.scope + '"]');
-    if (radio) radio.checked = true;
+/* 全局地图（四档切换 + 区域点击进工作台） */
+let ovMap = null, ovMarkers = null;
+function renderOvMap() {
+  const ov = state.overview;
+  if (!ov || !window.L) return;
+  if (!ovMap) {
+    ovMap = L.map("ov-map", { zoomControl: true, attributionControl: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(ovMap);
+  }
+  if (ovMarkers) ovMarkers.forEach(m => ovMap.removeLayer(m));
+  ovMarkers = [];
+  const mode = state.mapMode;
+  const items = ov.areas.filter(a => a[mode] > 0);
+  if (!items.length) return;
+  const maxV = Math.max.apply(null, items.map(a => a[mode]));
+  items.forEach(a => {
+    const r = 9 + 24 * Math.sqrt(a[mode] / maxV);
+    const mk = L.circleMarker([a.lat, a.lon], {
+      radius: r, color: "#ffb4ae", weight: 1.5,
+      fillColor: mode === "high" ? "#f4574d" : (mode === "multi" ? "#f5a623" : "#3d7eff"),
+      fillOpacity: .55,
+    }).addTo(ovMap);
+    const modeName = { total: "全部工单", multi: "重复工单", high: "高优先事件工单" }[mode];
+    mk.bindTooltip(a.area + " · " + modeName + " " + a[mode].toLocaleString() + " 条",
+      { direction: "top", offset: [0, -6] });
+    mk.on("click", () => {
+      const f = { area: a.area };
+      if (mode === "multi") f.multi = "1";
+      if (mode === "high") f.level = "高关注";
+      goWorkbench(f);
+    });
+    ovMarkers.push(mk);
+  });
+  const bounds = L.latLngBounds(items.map(a => [a.lat, a.lon]));
+  ovMap.fitBounds(bounds, { padding: [30, 30] });
+}
+document.querySelectorAll("#map-tabs .map-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#map-tabs .map-tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.mapMode = btn.dataset.mode;
+    renderOvMap();
   });
 });
 
-function kpiCard(val, lbl, sub, cls, isText) {
-  return '<div class="kpi ' + cls + '">' +
-    '<div class="num" style="' + (isText ? "font-size:17px;line-height:1.4;padding-top:8px" : "") + '">' + esc(val) + "</div>" +
-    '<div class="lbl">' + esc(lbl) + '</div><div class="sub">' + esc(sub) + "</div></div>";
-}
-
-/* ================= 事件详情 ================= */
-function selectEvent(i) {
-  state.selected = i;
-  $("event-table").querySelectorAll("tbody tr").forEach((tr, j) =>
-    tr.classList.toggle("sel", j === i));
-  const e = state.payload.events[i];
-
-  $("detail-empty").classList.add("hidden");
-  $("detail-body").classList.remove("hidden");
-
-  $("detail-meta").innerHTML =
-    meta("事件编号", e.event_id) + meta("事件主体", e.subject) +
-    meta("事件类型", e.type) + meta("所属区域", e.area) +
-    meta("累计频次", e.frequency + "（近24h " + e.last_24h + " / 近7天 " + e.last_7d + "）") +
-    meta("风险等级", riskBadge(e.risk_level) + "　优先级 " + Number(e.priority_score || 0).toFixed(1)) +
-    meta("首次出现", e.first_seen) + meta("最近出现", e.last_seen);
-
-  $("risk-box").innerHTML = "<b>风险原因</b>" + esc(e.risk_reason || "暂无") +
-    (e.breakdown && Object.keys(e.breakdown).length
-      ? '<div class="score-line">优先级 ' + Number(e.priority_score || 0).toFixed(1) +
-        " = 频次分 " + (e.breakdown["频次分"] ?? 0) + "×35% + 趋势分 " + (e.breakdown["趋势分"] ?? 0) +
-        "×30% + 集中度分 " + (e.breakdown["集中度分"] ?? 0) + "×15% + 敏感度分 " +
-        (e.breakdown["敏感度分"] ?? 0) + "×20%（规则评分，可复核）</div>"
-      : "");
-
-  const aiBadge = e.advice_source === "LLM" ? '<span class="ai-badge">AI 检索匹配</span>' : "";
-  $("advice-box").innerHTML = "<b>处置建议" + aiBadge + "</b>" +
-    "建议关注：" + esc(e.department || "需人工研判") + "<br>" +
-    "建议动作：" + esc(e.advice || "—") + "<br>" +
-    "持续监控：" + esc(e.monitor || "—") + "　·　重点事件：" + esc(e.is_key || "—");
-
-  $("sample-table").querySelector("tbody").innerHTML = (e.samples || []).map(s =>
-    '<tr data-oid="' + esc(s.order_id) + '"><td>' + esc(s.order_id) + "</td><td>" + esc(s.content) + "</td></tr>").join("");
-  $("sample-table").querySelectorAll("tbody tr").forEach(tr =>
-    tr.addEventListener("click", () => jumpToOrder(tr.dataset.oid)));
-
-  drawTrend(e);
-  drawArea(e);
-}
-
-/* 典型工单溯源：在完整工单表中定位来源行并高亮 */
-function jumpToOrder(oid) {
-  const tr = $("orders-table").querySelector('tr[data-oid="' + oid + '"]');
-  if (!tr) {
-    toast("该工单不在当前明细展示范围内（明细按多频优先展示前 2000 条），可下载完整结果查询。", true);
-    return;
-  }
-  tr.scrollIntoView({ block: "center", behavior: "smooth" });
-  tr.classList.remove("flash");
-  void tr.offsetWidth;   // 重置动画
-  tr.classList.add("flash");
-}
-function meta(k, v) {
-  return '<div><div class="k">' + esc(k) + '</div><div class="v">' + (String(v).startsWith("<") ? v : esc(v)) + "</div></div>";
-}
-
-/* ================= 图表 ================= */
-const AXIS_COLOR = "#8b98b3", SPLIT_COLOR = "#1c2942";
-function baseOpt() {
-  return {
-    textStyle: { fontFamily: "Microsoft YaHei" },
-    tooltip: { trigger: "axis", backgroundColor: "#182642", borderColor: "#22304d", textStyle: { color: "#e8edf7", fontSize: 12 } },
-    grid: { left: 12, right: 34, top: 14, bottom: 8, containLabel: true },
-  };
-}
-function drawTrend(e) {
-  const el = $("chart-trend");
-  if (!state.trendChart) state.trendChart = echarts.init(el);
-  const c = state.trendChart;
-  let dates = (e.daily || []).map(d => d.date.slice(5));
-  let vals = (e.daily || []).map(d => d.count);
-  if (!dates.length) {
-    c.clear();
-    c.setOption({ title: { text: "缺少有效时间字段", left: "center", top: "middle", textStyle: { color: AXIS_COLOR, fontSize: 13, fontWeight: 400 } } });
-    return;
-  }
-  // 长周期（>31 天）按 7 天分桶汇总，保证可读性
+/* 整体趋势（全局日工单量） */
+let ovTrendChart = null;
+function renderOvTrend() {
+  const ov = state.overview;
+  if (!ov) return;
+  const el = $("ov-trend");
+  if (!ovTrendChart) ovTrendChart = echarts.init(el);
+  let dates = ov.daily_all.map(d => d.date.slice(5));
+  let vals = ov.daily_all.map(d => d.count);
   if (dates.length > 31) {
     const bd = [], bv = [];
     for (let i = 0; i < dates.length; i += 7) {
@@ -1030,109 +1032,341 @@ function drawTrend(e) {
     }
     dates = bd; vals = bv;
   }
-  const opt = baseOpt();
-  opt.tooltip.axisPointer = { type: "line" };
-  opt.xAxis = {
-    type: "category", data: dates, boundaryGap: false,
-    axisLabel: { color: "#c6cfdf", fontSize: 11, interval: Math.max(0, Math.ceil(dates.length / 9) - 1) },
-    axisTick: { show: false }, axisLine: { lineStyle: { color: SPLIT_COLOR } },
-  };
-  opt.yAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
-  opt.series = [{
-    type: "line", data: vals, smooth: true,
-    symbol: "circle", symbolSize: 6,
-    lineStyle: { width: 2.5, color: "#3d7eff" },
-    itemStyle: { color: "#3d7eff", borderColor: "#0a111f", borderWidth: 1 },
-    areaStyle: {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: "rgba(61, 126, 255, .38)" },
-        { offset: 1, color: "rgba(61, 126, 255, .02)" }]),
+  ovTrendChart.setOption({
+    textStyle: { fontFamily: "Microsoft YaHei" },
+    tooltip: { trigger: "axis" },
+    grid: { left: 12, right: 24, top: 16, bottom: 8, containLabel: true },
+    xAxis: {
+      type: "category", data: dates, boundaryGap: false,
+      axisLabel: { color: "#c6cfdf", fontSize: 11, interval: Math.max(0, Math.ceil(dates.length / 10) - 1) },
+      axisLine: { lineStyle: { color: "#22304d" } }, axisTick: { show: false },
     },
-  }];
-  c.setOption(opt, true);
+    yAxis: { type: "value", minInterval: 1, axisLabel: { color: "#8b98b3" }, splitLine: { lineStyle: { color: "#1c2942" } } },
+    series: [{
+      type: "line", data: vals, smooth: true, symbol: "none",
+      lineStyle: { width: 2.5, color: "#2dd4bf" },
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: "rgba(45,212,191,.32)" }, { offset: 1, color: "rgba(45,212,191,.02)" }]) },
+    }],
+  }, true);
 }
-function drawArea(e) {
-  const el = $("chart-area");
-  const areas = e.areas || [];
-  const withCoords = areas.filter(a => a.lat != null && a.lon != null);
-  const noCoords = areas.filter(a => a.lat == null || a.lon == null);
 
-  // ---- 有坐标区域：Leaflet 真实底图地图 ----
-  if (withCoords.length && window.L) {
-    $("area-chart-title").textContent = "区域分布（地图）";
-    if (state.areaChart) { state.areaChart.dispose(); state.areaChart = null; }
-    if (state.leafletMap) { state.leafletMap.remove(); state.leafletMap = null; }
-    el.innerHTML = "";
-    const map = L.map(el, { zoomControl: true, attributionControl: true });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; OpenStreetMap 贡献者',
-    }).addTo(map);
-    const maxCount = Math.max.apply(null, withCoords.map(a => a.count));
-    const bounds = [];
-    withCoords.forEach(a => {
-      const r = 8 + 26 * Math.sqrt(a.count / maxCount);
-      const marker = L.circleMarker([a.lat, a.lon], {
-        radius: r, color: "#ffb4ae", weight: 1.5,
-        fillColor: "#f4574d", fillOpacity: 0.6,
-      }).addTo(map);
-      marker.bindTooltip(a.area + " · " + a.count + " 条", { direction: "top", offset: [0, -6] });
-      bounds.push([a.lat, a.lon]);
-    });
-    if (bounds.length === 1) map.setView(bounds[0], 12);
-    else map.fitBounds(bounds, { padding: [36, 36] });
-    state.leafletMap = map;
-    // 坐标词典未覆盖的区域备注说明
-    $("area-note").innerHTML = noCoords.length
-      ? "未上图区域：" + noCoords.slice(0, 5).map(a => esc(a.area) + " " + a.count + "条").join("、") +
-        (noCoords.length > 5 ? " 等 " + noCoords.length + " 个" : "")
-      : "";
-    return;
+/* 事件深度分析（选中榜单事件后展示，双击行触发；默认自动选中第一个） */
+let evTrendChart = null;
+function selectEvent(i) {
+  const p = state.payload;
+  state.evSelected = i;
+  const e = p.events[i];
+  $("ev-empty").classList.add("hidden");
+  $("ev-body").classList.remove("hidden");
+  $("ev-meta").innerHTML =
+    meta("事件", (e.subject.startsWith("（") || e.subject.startsWith("多主体聚合") ? "" : e.subject + " · ") + e.type) +
+    meta("所属区域", e.area) +
+    meta("累计频次", e.frequency + "（近24h " + e.last_24h + " / 近7天 " + e.last_7d + "）") +
+    meta("风险等级", riskBadge(e.risk_level).replace(/</g, "<") + " 优先级 " + Number(e.priority_score || 0).toFixed(1)) +
+    meta("首次出现", e.first_seen) + meta("最近出现", e.last_seen);
+  $("ev-risk").innerHTML = "<b>风险原因</b>" + esc(e.risk_reason || "暂无") +
+    (e.breakdown && Object.keys(e.breakdown).length
+      ? '<div class="score-line">优先级 ' + Number(e.priority_score || 0).toFixed(1) +
+        " = 频次分 " + (e.breakdown["频次分"] ?? 0) + "×35% + 趋势分 " + (e.breakdown["趋势分"] ?? 0) +
+        "×30% + 集中度分 " + (e.breakdown["集中度分"] ?? 0) + "×15% + 敏感度分 " +
+        (e.breakdown["敏感度分"] ?? 0) + "×20%（规则评分，可复核）</div>" : "");
+  const aiBadge = e.advice_source === "LLM" ? '<span class="ai-badge">AI 检索匹配</span>' : "";
+  $("ev-advice").innerHTML = "<b>处置建议" + aiBadge + "</b>" +
+    "建议关注：" + esc(e.department || "需人工研判") + "<br>" +
+    "建议动作：" + esc(e.advice || "—");
+  // 趋势图
+  const el = $("ev-trend");
+  if (!evTrendChart) evTrendChart = echarts.init(el);
+  let dates = (e.daily || []).map(d => d.date.slice(5));
+  let vals = (e.daily || []).map(d => d.count);
+  if (dates.length > 31) {
+    const bd = [], bv = [];
+    for (let j = 0; j < dates.length; j += 7) {
+      bd.push(dates[j]);
+      bv.push(vals.slice(j, j + 7).reduce((a, b) => a + b, 0));
+    }
+    dates = bd; vals = bv;
   }
-
-  // ---- 降级：echarts 横向条形图（无坐标或 Leaflet 不可用） ----
-  $("area-chart-title").textContent = "区域分布";
-  $("area-note").innerHTML = "";
-  if (state.leafletMap) { state.leafletMap.remove(); state.leafletMap = null; }
-  if (state.areaChart) { state.areaChart.dispose(); state.areaChart = null; }
-  el.innerHTML = "";
-  state.areaChart = echarts.init(el);
-  const c = state.areaChart;
-  if (!areas.length) {
-    c.setOption({ title: { text: "缺少区域信息", left: "center", top: "middle", textStyle: { color: AXIS_COLOR, fontSize: 13, fontWeight: 400 } } });
-    return;
-  }
-  const top = areas.slice(0, 12);
-  const opt = baseOpt();
-  opt.xAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
-  opt.yAxis = { type: "category", data: top.map(a => a.area).reverse(), axisLabel: { color: "#c6cfdf" }, axisTick: { show: false }, axisLine: { show: false } };
-  opt.series = [{
-    type: "bar", data: top.map(a => a.count).reverse(), barWidth: 14,
-    itemStyle: { borderRadius: [0, 6, 6, 0], color: "#3d7eff" },
-    label: { show: true, position: "right", color: "#c6cfdf", fontSize: 12 },
-  }];
-  c.setOption(opt, true);
+  evTrendChart.setOption({
+    textStyle: { fontFamily: "Microsoft YaHei" },
+    tooltip: { trigger: "axis" },
+    grid: { left: 12, right: 24, top: 16, bottom: 8, containLabel: true },
+    xAxis: {
+      type: "category", data: dates, boundaryGap: false,
+      axisLabel: { color: "#c6cfdf", fontSize: 11, interval: Math.max(0, Math.ceil(dates.length / 8) - 1) },
+      axisLine: { lineStyle: { color: "#22304d" } }, axisTick: { show: false },
+    },
+    yAxis: { type: "value", minInterval: 1, axisLabel: { color: "#8b98b3" }, splitLine: { lineStyle: { color: "#1c2942" } } },
+    series: [{
+      type: "line", data: vals, smooth: true,
+      symbol: "circle", symbolSize: 5,
+      lineStyle: { width: 2.5, color: "#3d7eff" }, itemStyle: { color: "#3d7eff" },
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: "rgba(61,126,255,.35)" }, { offset: 1, color: "rgba(61,126,255,.02)" }]) },
+    }],
+  }, true);
+}
+function meta(k, v) {
+  return '<div><div class="k">' + esc(k) + '</div><div class="v">' + (String(v).startsWith("<") ? v : esc(v)) + "</div></div>";
 }
 window.addEventListener("resize", () => {
-  if (state.trendChart) state.trendChart.resize();
-  if (state.areaChart) state.areaChart.resize();
-  if (state.leafletMap) state.leafletMap.invalidateSize();
+  if (ovTrendChart) ovTrendChart.resize();
+  if (evTrendChart) evTrendChart.resize();
+  if (ovMap) ovMap.invalidateSize();
 });
-
-/* ================= 飞书推送 ================= */
-async function pushFeishu() {
-  try {
-    const res = await fetch("/api/feishu", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ webhook: $("p-webhook").value.trim() }),
+/* ================= 第二页 工单工作台 ================= */
+let wbTimer = null;
+async function renderWorkbench() {
+  if (!state.payload) return;
+  // 区域选项
+  const areaSel = $("wb-area");
+  if (areaSel.options.length <= 1 && state.overview) {
+    state.overview.areas.forEach(a => {
+      const o = document.createElement("option");
+      o.value = a.area; o.textContent = a.area;
+      areaSel.appendChild(o);
     });
-    const data = await res.json();
-    toast(data.message, !data.ok);
-  } catch (e) {
-    toast("推送请求失败：" + e, true);
+  }
+  // 控件同步
+  $("wb-q").value = wb.q;
+  $("wb-area").value = wb.area;
+  $("wb-multi").value = wb.multi;
+  $("wb-level").value = wb.level;
+  $("wb-review").value = wb.review;
+  $("wb-sort").value = wb.sort;
+
+  // 筛选条件 chips
+  const chips = [];
+  const evName = wb.event && state.payload
+    ? ((state.payload.events.find(e => e.event_id === wb.event) || {}).type || wb.event) : "";
+  if (wb.area) chips.push(["area", "区域：" + wb.area]);
+  if (wb.multi === "1") chips.push(["multi", "重复状态：多频"]);
+  if (wb.multi === "0") chips.push(["multi", "重复状态：非多频"]);
+  if (wb.level) chips.push(["level", "风险等级：" + wb.level]);
+  if (wb.review) chips.push(["review", "核查状态：" + wb.review]);
+  if (wb.event) chips.push(["event", "事件：" + evName]);
+  if (wb.q) chips.push(["q", "关键词：" + wb.q]);
+  $("wb-chips").innerHTML = chips.length
+    ? '<span class="muted">当前筛选：</span>' + chips.map(c =>
+        '<span class="wb-chip">' + esc(c[1]) + '<i onclick="clearWbFilter(\'' + c[0] + '\')">✕</i></span>').join("") +
+      '<span class="wb-chip" style="cursor:pointer" onclick="clearWbFilter(\'all\')">清除全部</span>'
+    : "";
+
+  const params = new URLSearchParams({
+    page: wb.page, size: wb.size, q: wb.q, area: wb.area, multi: wb.multi,
+    level: wb.level, review: wb.review, event: wb.event, sort: wb.sort,
+  });
+  const d = await (await fetch("/api/orders?" + params)).json();
+  if (!d.ok) { toast(d.error || "加载失败", true); return; }
+
+  $("wb-table").querySelector("tbody").innerHTML = d.rows.map(r =>
+    '<tr data-oid="' + esc(r.order_id) + '">' +
+    '<td><input type="checkbox" class="wb-check" value="' + esc(r.order_id) + '"' +
+      (wb.selected.has(r.order_id) ? " checked" : "") + '></td>' +
+    "<td>" + esc(r.order_id) + "</td>" +
+    '<td><div class="ev-name">' + esc(r.title || "—") + '</div><div class="ev-sub">' + esc(r.content) + "</div></td>" +
+    "<td>" + esc(r.area || "—") + "</td>" +
+    "<td>" + (r.event ? esc(r.event) + ' <span class="badge b-gray">' + esc(r.event_id) + "</span>" : "—") + "</td>" +
+    "<td>" + (r.multi ? "<b>" + r.size + "</b>" : "1") + "</td>" +
+    "<td>" + (r.level ? riskBadge(r.level) : "—") + "</td>" +
+    "<td>" + reviewBadge(r.review) + "</td>" +
+    "<td>" + esc(r.time || "—") + "</td>" +
+    "</tr>").join("");
+
+  // 行点击进详情（复选框除外）
+  $("wb-table").querySelectorAll("tbody tr").forEach(tr => {
+    tr.addEventListener("click", ev => {
+      if (ev.target.tagName === "INPUT") return;
+      goOrder(tr.dataset.oid);
+    });
+  });
+  // 复选框
+  $("wb-table").querySelectorAll(".wb-check").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) wb.selected.add(cb.value);
+      else wb.selected.delete(cb.value);
+      updateBatchBar();
+    });
+  });
+  updateBatchBar();
+
+  const pages = Math.max(1, Math.ceil(d.total / wb.size));
+  $("wb-pageinfo").textContent = "第 " + d.page + " / " + pages + " 页";
+  $("wb-total").textContent = "共 " + d.total.toLocaleString() + " 条工单";
+  $("wb-prev").disabled = d.page <= 1;
+  $("wb-next").disabled = d.page >= pages;
+}
+function updateBatchBar() {
+  const bar = $("batch-bar");
+  if (wb.selected.size > 0) {
+    bar.classList.remove("hidden");
+    $("batch-count").textContent = "已选 " + wb.selected.size + " 条";
+  } else bar.classList.add("hidden");
+}
+function clearWbFilter(key) {
+  if (key === "all") { wb.area = ""; wb.multi = ""; wb.level = ""; wb.review = ""; wb.event = ""; wb.q = ""; }
+  else if (key === "q") wb.q = "";
+  else wb[key] = "";
+  wb.page = 1;
+  renderWorkbench();
+}
+async function batchReview(status) {
+  if (!wb.selected.size) return;
+  const r = await (await fetch("/api/review", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: [...wb.selected], status }),
+  })).json();
+  toast(r.message, !r.ok);
+  if (r.ok) {
+    wb.selected.clear();
+    await loadOverview();
+    renderWorkbench();
   }
 }
+$("wb-checkall").addEventListener("change", function () {
+  $("wb-table").querySelectorAll(".wb-check").forEach(cb => {
+    cb.checked = this.checked;
+    if (this.checked) wb.selected.add(cb.value);
+    else wb.selected.delete(cb.value);
+  });
+  updateBatchBar();
+});
+$("wb-q").addEventListener("input", () => {
+  clearTimeout(wbTimer);
+  wbTimer = setTimeout(() => { wb.q = $("wb-q").value.trim(); wb.page = 1; renderWorkbench(); }, 400);
+});
+[["wb-area", "area"], ["wb-multi", "multi"], ["wb-level", "level"], ["wb-review", "review"], ["wb-sort", "sort"]].forEach(pair => {
+  $(pair[0]).addEventListener("change", () => { wb[pair[1]] = $(pair[0]).value; wb.page = 1; renderWorkbench(); });
+});
+$("wb-prev").addEventListener("click", () => { if (wb.page > 1) { wb.page--; renderWorkbench(); } });
+$("wb-next").addEventListener("click", () => { wb.page++; renderWorkbench(); });
+$("btn-feishu").addEventListener("click", async () => {
+  const r = await (await fetch("/api/feishu", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ webhook: $("p-webhook").value.trim() }),
+  })).json();
+  toast(r.message, !r.ok);
+});
+
+/* ================= 第三页 工单详情 ================= */
+async function renderOrder(oid) {
+  const root = $("order-root");
+  root.innerHTML = '<div class="card muted" style="padding:40px;text-align:center">正在加载工单详情…</div>';
+  const d = await (await fetch("/api/order/" + encodeURIComponent(oid))).json();
+  if (!d.ok) {
+    root.innerHTML = '<div class="card" style="padding:40px;text-align:center">' + esc(d.error) +
+      '<br><br><button class="btn" onclick="goOverview()">返回总览</button></div>';
+    return;
+  }
+  const o = d.order, ai = d.ai, cl = d.cluster;
+  const needFill = '<span class="need-fill">待补充（数据源未提供该字段）</span>';
+  const rv = d.review;
+
+  // 判断依据 chips
+  const basisHtml = (d.basis || []).map(b => {
+    const cls = b.result === "一致" ? "ok" : (b.result === "不一致" ? "no" : "na");
+    const icon = b.result === "一致" ? "✓" : (b.result === "不一致" ? "✗" : "–");
+    return '<span class="basis-chip ' + cls + '">' + esc(b.factor) + "：" + icon + " " + esc(b.result) + "</span>";
+  }).join("");
+
+  root.innerHTML =
+  '<div class="od-head">' +
+    '<button class="btn small" onclick="history.back()">← 返回</button>' +
+    '<span class="od-id">' + esc(o.order_id) + "</span>" +
+    (cl.is_multi ? '<span class="badge b-red">多频工单 · 共 ' + cl.frequency + " 条</span>" : '<span class="badge b-gray">非多频</span>') +
+    (cl.level ? riskBadge(cl.level) : "") +
+    reviewBadge(rv ? rv.status : "") +
+    '<span class="spacer"></span>' +
+    '<button class="btn small" onclick="orderReview(\'' + esc(o.order_id) + '\',\'已确认\')">确认重复</button>' +
+    '<button class="btn small danger" onclick="orderReview(\'' + esc(o.order_id) + '\',\'误判\')">误判</button>' +
+    '<button class="btn small" onclick="orderReview(\'' + esc(o.order_id) + '\',\'待定\')">暂不确定</button>' +
+    '<button class="btn small" onclick="orderReview(\'' + esc(o.order_id) + '\',\'重点\')">标记重点</button>' +
+  "</div>" +
+
+  '<div class="od-grid">' +
+    '<div class="card"><h2>原始工单</h2>' +
+      '<div class="field-list">' +
+        field("工单编号", esc(o.order_id)) +
+        field("标题", o.title ? esc(o.title) : needFill) +
+        field("创建时间", o.time ? esc(o.time) : needFill) +
+        field("诉求人", needFill) +
+        field("联系方式", needFill) +
+        field("地址", needFill) +
+        field("所属区域", o.area_raw ? esc(o.area_raw) : needFill) +
+        field("承办部门", needFill) +
+      "</div>" +
+      '<div style="margin-top:14px" class="muted" style="font-size:12px">原始诉求内容</div>' +
+      '<div class="raw-content">' + esc(o.content) + "</div>" +
+    "</div>" +
+
+    '<div class="card"><h2>AI 结构化理解</h2>' +
+      '<div class="field-list">' +
+        field("主体", ai.subject ? esc(ai.subject) : needFill) +
+        field("地点", ai.area ? esc(ai.area) : needFill) +
+        field("事件", ai.event ? esc(ai.event) : needFill) +
+        field("所属事件簇", cl.event_id ? esc(cl.event_id) + "（" + esc(cl.event_type) + "）" : "—") +
+        field("建议关注部门", ai.department ? esc(ai.department) : "需人工研判") +
+        field("建议动作", ai.advice ? esc(ai.advice) + (ai.advice_source === "LLM" ? '<span class="ai-badge">AI 检索匹配</span>' : "") : "—") +
+      "</div>" +
+      '<div style="margin-top:14px" class="muted">标准化诉求文本</div>' +
+      '<div class="raw-content">' + esc(ai.normalized || o.content) + "</div>" +
+    "</div>" +
+  "</div>" +
+
+  '<div class="card" style="margin-bottom:18px"><h2>AI 重复关系与判断依据</h2>' +
+    (cl.is_multi
+      ? '<div class="conclusion">AI 判断：<b>高度疑似同一事件</b> —— 该事件共 ' + cl.frequency + " 条关联工单" +
+        (cl.level ? "，风险等级 " + esc(cl.level) : "") + "</div>" +
+        (basisHtml ? '<div class="basis-row">' + basisHtml + "</div>" : "")
+      : '<div class="conclusion">该工单暂未发现重复关联。</div>') +
+    (d.similar && d.similar.length
+      ? '<div style="margin-top:12px"><div class="muted" style="font-size:12.5px;margin-bottom:6px">相似但非重复（AI 区分能力）</div>' +
+        d.similar.map(s =>
+          '<div class="basis-chip na" style="display:block;margin-bottom:6px;padding:8px 12px">' +
+          esc(s.event_id) + " · " + esc(s.area) + " · " + s.frequency + " 条 —— " + esc(s.reason) + "</div>").join("") +
+        "</div>"
+      : "") +
+  "</div>" +
+
+  '<div class="od-grid">' +
+    '<div class="card"><h2>关联工单<span class="h-note">点击进入对应工单</span></h2>' +
+      (d.mates.length
+        ? '<div class="scroll-y"><table class="clickable"><thead><tr><th>工单号</th><th>诉求内容</th><th>区域</th><th>时间</th></tr></thead><tbody>' +
+          d.mates.map(m =>
+            '<tr onclick="goOrder(\'' + esc(m.order_id) + '\')">' +
+            "<td>" + esc(m.order_id) + "</td>" +
+            "<td>" + esc(m.content) + "</td>" +
+            "<td>" + esc(m.area || "—") + "</td>" +
+            "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
+          "</tbody></table></div>"
+        : '<div class="muted" style="padding:20px">无其他关联工单。</div>') +
+    "</div>" +
+
+    '<div class="card"><h2>核查状态与处理记录</h2>' +
+      '<div style="margin-bottom:10px">当前状态：' + reviewBadge(rv ? rv.status : "") + "</div>" +
+      (rv && rv.log && rv.log.length
+        ? '<div class="review-log">' + rv.log.slice().reverse().map(l =>
+            "· " + esc(l.ts) + "　标记为「" + esc(l.action) + "」").join("<br>") + "</div>"
+        : '<div class="muted">暂无处理记录。请使用右上角按钮进行人工核查。</div>') +
+    "</div>" +
+  "</div>";
+}
+function field(k, v) {
+  return '<div><div class="k">' + k + '</div><div class="v">' + v + "</div></div>";
+}
+async function orderReview(oid, status) {
+  const r = await (await fetch("/api/review", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: [oid], status }),
+  })).json();
+  toast(r.message, !r.ok);
+  if (r.ok) { await loadOverview(); renderOrder(oid); }
+}
+
+/* ================= 启动 ================= */
+loadLocalFiles();
+boot();
 </script>
 </body>
 </html>
