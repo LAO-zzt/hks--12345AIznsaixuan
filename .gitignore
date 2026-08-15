@@ -24,6 +24,16 @@ models/
 *.log
 webapp/secrets.json
 
+# 隐私文件（凭证/工单数据/清洗库/临时文件）严禁入库
+密钥/
+data/feishu_cache.parquet
+data/input/*.csv
+textclean_module/data/*.db
+textclean_module/data/*.db-shm
+textclean_module/data/*.db-wal
+_tmp_*.py
+_backup_*.html
+
 # IDE
 .idea/
 .vscode/
