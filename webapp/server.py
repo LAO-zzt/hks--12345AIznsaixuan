@@ -66,6 +66,7 @@ def _run_textclean(df):
     """textclean_module 清洗+实体抽取，映射到现有流水线列（布局/接口不变）。"""
     pipeline = _get_textclean_pipeline()
     from ticket_cleaner.schema import TicketRecord
+    from ticket_cleaner.extractors import extract_organization
     records = [
         TicketRecord(
             ticket_no=str(r.order_id), title=str(r.title or ""),
@@ -78,6 +79,15 @@ def _run_textclean(df):
         v = str(v).strip()
         return v if v and v != "nan" else ""
 
+    def _pick_subject(tc_result, raw_subj):
+        """优先 textclean 结果，其次清洗原始 subject（社区优先覆盖），最后原样兜底。"""
+        if tc_result and tc_result.organization_normalized:
+            return tc_result.organization_normalized
+        cleaned, _, _ = extract_organization(_nz(raw_subj))
+        if cleaned:
+            return cleaned
+        return _nz(raw_subj)
+
     df = df.copy()
     contents = df["content"].astype(str).tolist()
     subjects = df["subject"].astype(str).tolist() if "subject" in df else [""] * len(df)
@@ -85,7 +95,7 @@ def _run_textclean(df):
     df["normalized_content"] = [
         (t.semantic_content or t.clean_content or c) for t, c in zip(cleaned, contents)]
     df["extracted_subject"] = [
-        (t.organization_normalized or _nz(raw)) for t, raw in zip(cleaned, subjects)]
+        _pick_subject(t, raw) for t, raw in zip(cleaned, subjects)]
     df["extracted_event"] = [t.event_type or "" for t in cleaned]
     df["extracted_area"] = [(t.town or _nz(raw)) for t, raw in zip(cleaned, areas)]
     df["addr_norm"] = [t.address_normalized or "" for t in cleaned]

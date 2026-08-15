@@ -122,17 +122,24 @@ _ORG_START_BLACKLIST = [
 ]
 
 # 主体类型关键词（按优先级排序）
+# 优先级原则：社区/小区 > 机构/医院/学校 > 企业 > 商铺/场所
+# 因为 12345 热线工单中，"XX小区楼下烧烤店"的真实主体是小区，而非烧烤店
 _ORG_KEYWORDS: List[Tuple[str, re.Pattern]] = [
+    ("community", re.compile(r"([\u4e00-\u9fa5]{2,12}(?:小区|花园|公寓|苑|居|府|村|社区|工业园|大厦|大楼|家园|雅苑|名居|公馆|庭院|新城|楼盘))")),
     ("hospital", re.compile(r"([\u4e00-\u9fa5]{2,15}(?:医院|卫生院|卫生服务中心|诊所|门诊))")),
-    ("minsu", re.compile(r"([\u4e00-\u9fa5]{2,15}(?:民宿|客栈|旅馆|酒店|宾馆|公寓酒店))")),
     ("school", re.compile(r"([\u4e00-\u9fa5]{2,15}(?:学校|小学|中学|大学|幼儿园|学院))")),
     ("property", re.compile(r"([\u4e00-\u9fa5]{2,15}(?:物业|管理处))")),
+    ("department", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:局|委|办|大队|支队|分局|所|站|街道|镇))")),
     ("company", re.compile(r"([\u4e00-\u9fa5]{2,20}(?:公司|厂|企业|集团|商店|商行|经营部))")),
-    ("shop", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:体验馆|体育馆|博物馆|店|铺|餐厅|食店|超市|百货))")),
-    ("place", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:美食城|夜市街|商业街|广场|公园|市场))")),
-    ("community", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:小区|花园|公寓|苑|居|府|村|社区))")),
-    ("department", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:局|委|办|大队|支队|分局|所|站))")),
+    ("shop", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:体验馆|体育馆|博物馆|店|铺|餐厅|食店|超市|百货|烧烤店|商场))")),
+    ("place", re.compile(r"([\u4e00-\u9fa5]{2,10}(?:美食城|夜市街|商业街|广场|公园|市场|步行街|夜市|大道|路口|工地|街道))")),
+    ("minsu", re.compile(r"([\u4e00-\u9fa5]{2,15}(?:民宿|客栈|旅馆|酒店|宾馆|公寓酒店))")),
 ]
+
+# 社区/小区模式单独预编译，用于"社区优先"覆盖逻辑
+_COMMUNITY_PATTERN = _ORG_KEYWORDS[0][1]
+# 商铺/场所类型集合，用于触发社区覆盖
+_SHOP_PLACE_TYPES = {"shop", "place", "minsu"}
 
 # 主体类型 -> 标签
 _ORG_TYPE_LABEL = {
@@ -173,19 +180,34 @@ def _is_valid_org_name(raw: str) -> bool:
 def extract_organization(text: str) -> Tuple[str, str, float]:
     """抽取主体。返回 (raw, entity_type, confidence)。
 
-    注：归一化在 normalizer 中完成。这里只返回 raw 和类型。
+    核心策略：社区/小区 > 机构/医院/学校 > 企业 > 商铺/场所。
+    当商铺/场所名出现在社区名之后（10字距离内），优先返回社区名。
     """
     if not text:
         return "", "", 0.0
+
+    # 预扫描所有社区/小区匹配（用于社区优先覆盖）
+    community_matches = []
+    for m in _COMMUNITY_PATTERN.finditer(text):
+        raw = m.group(1).strip()
+        if _is_valid_org_name(raw):
+            community_matches.append((m.start(), m.end(), raw))
+
     # 按优先级尝试每种类型
     for typ, pat in _ORG_KEYWORDS:
         for m in pat.finditer(text):
             raw = m.group(1).strip()
             if not _is_valid_org_name(raw):
                 continue
-            # 进一步：截取最后一个动词之后的部分
-            # 例如"市民曾反映噪音扰民问题烧烤店" -> "烧烤店"
-            # 找最后一个黑名单动词位置
+
+            # 社区优先覆盖：若匹配到商铺/场所，且之前有社区名
+            # （位置在商铺前，且距离 ≤ 10 字），则优先返回社区名
+            if typ in _SHOP_PLACE_TYPES and community_matches:
+                for c_start, c_end, c_raw in community_matches:
+                    if c_start < m.start() and m.start() - c_end <= 10:
+                        return c_raw, "小区", 0.85
+
+            # 截取最后一个动词之后的部分
             cut_pos = -1
             for kw in _ORG_INNER_BLACKLIST:
                 pos = raw.rfind(kw)
@@ -195,10 +217,16 @@ def extract_organization(text: str) -> Tuple[str, str, float]:
                 candidate = raw[cut_pos:].strip()
                 if len(candidate) >= 2 and _is_valid_org_name(candidate):
                     raw = candidate
-            # 再次校验
+
             if not _is_valid_org_name(raw):
                 continue
             return raw, _ORG_TYPE_LABEL.get(typ, "organization"), 0.7
+
+    # 兜底：有社区匹配但没被选中时，返回第一个社区
+    if community_matches:
+        _, _, raw = community_matches[0]
+        return raw, "小区", 0.6
+
     return "", "", 0.0
 
 
