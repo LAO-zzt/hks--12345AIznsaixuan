@@ -355,7 +355,7 @@ async def analyze(
                             e["advice_source"] = "LLM"
                             hit += 1
                 if hit:
-                    warnings.append("DeepSeek 已为 %d 个事件生成处置建议（详情中标注“AI 生成”）。" % hit)
+                    warnings.append("DeepSeek 已为 %d 个事件完成处置建议匹配（详情中标注“AI 检索匹配”）。" % hit)
                 if len(unmatched) > hit:
                     warnings.append("仍有 %d 个事件未匹配到处置建议，保持“需人工研判”。" % (len(unmatched) - hit))
 

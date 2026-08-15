@@ -264,6 +264,30 @@
   #toast.show { opacity: 1; }
   #toast.err { border-color: var(--red); color: #ffb4ae; }
 
+  /* ---------- 分析进度遮罩 ---------- */
+  #progress-overlay {
+    position: fixed; inset: 0; z-index: 98;
+    background: rgba(8, 13, 24, .85);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .prog-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 30px 40px; width: 420px; text-align: center;
+  }
+  .prog-ico { font-size: 30px; margin-bottom: 12px; animation: spin 2.4s linear infinite; display: inline-block; }
+  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  .prog-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; min-height: 22px; }
+  .prog-bar {
+    height: 8px; border-radius: 999px; background: var(--bg);
+    border: 1px solid var(--border); overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%; width: 5%; border-radius: 999px;
+    background: linear-gradient(90deg, #274a8f, #3d7eff, #2dd4bf);
+    transition: width .7s ease;
+  }
+  .prog-sub { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
   @media (max-width: 1100px) {
     .config-grid, .board-grid, .charts-row { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -319,7 +343,7 @@
         <h2>② 识别参数
           <span class="presets">
             <button class="preset-btn" data-preset="default" title="阈值3 · 全量分析">默认</button>
-            <button class="preset-btn" data-preset="sensitive" title="阈值2 · 近30天，捕捉升温事件">高敏·近30天</button>
+            <button class="preset-btn" data-preset="sensitive" title="阈值2 · 近30天，捕捉升温事件">灵敏</button>
             <button class="preset-btn" data-preset="strict" title="阈值5 · 全量，只保留头部事件">严格</button>
           </span>
         </h2>
@@ -456,6 +480,15 @@
   </section>
 </main>
 
+<div id="progress-overlay" class="hidden">
+  <div class="prog-card">
+    <div class="prog-ico">⚙️</div>
+    <div class="prog-title" id="prog-text">正在加载工单数据…</div>
+    <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
+    <div class="prog-sub" id="prog-sub">识别流水线执行中，请稍候</div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -546,6 +579,39 @@ $("p-llm").addEventListener("change", () => {
 });
 
 /* ================= 分析 ================= */
+let progTimer = null;
+function startProgress(useLLM) {
+  const stages = [
+    "正在加载并清洗工单数据…",
+    "文本标准化与实体抽取中…",
+    "事件聚类与多频识别中…",
+    "生成事件画像与趋势…",
+    "风险等级推理中…",
+  ];
+  if (useLLM) stages.push("AI 模型推理中，正在生成处置建议…");
+  stages.push("正在整理看板结果…");
+  let idx = 0;
+  $("prog-text").textContent = stages[0];
+  $("prog-sub").textContent = useLLM
+    ? "启用 AI 增强，预计 30~50 秒"
+    : "识别流水线执行中，请稍候";
+  $("prog-fill").style.width = "5%";
+  $("progress-overlay").classList.remove("hidden");
+  let pct = 5;
+  progTimer = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 5 + 2, 92);
+    $("prog-fill").style.width = pct + "%";
+    const target = Math.min(Math.floor(pct / (92 / stages.length)), stages.length - 1);
+    if (target !== idx) { idx = target; $("prog-text").textContent = stages[idx]; }
+  }, 800);
+}
+function stopProgress() {
+  if (progTimer) { clearInterval(progTimer); progTimer = null; }
+  $("prog-fill").style.width = "100%";
+  $("prog-text").textContent = "分析完成";
+  setTimeout(() => $("progress-overlay").classList.add("hidden"), 400);
+}
+
 async function runAnalysis() {
   const btn = $("btn-analyze");
   btn.disabled = true; btn.textContent = "正在执行识别流水线…";
@@ -562,14 +628,17 @@ async function runAnalysis() {
   } else if ($("file-select").value) {
     fd.append("datafile", $("file-select").value);
   }
+  startProgress($("p-llm").checked);
   try {
     const res = await fetch("/api/analyze", { method: "POST", body: fd });
     const data = await res.json();
+    stopProgress();
     if (!data.ok) { toast(data.error || "分析失败", true); return; }
     state.payload = data.payload;
     showPage("results");   // 先切页保证容器可见，再初始化图表
     renderResults();
   } catch (e) {
+    stopProgress();
     toast("请求失败：" + e, true);
   } finally {
     btn.disabled = false; btn.textContent = "开 始 分 析";
@@ -760,13 +829,15 @@ function selectEvent(i) {
     meta("风险等级", riskBadge(e.risk_level) + "　优先级 " + Number(e.priority_score || 0).toFixed(1)) +
     meta("首次出现", e.first_seen) + meta("最近出现", e.last_seen);
 
-  $("risk-box").innerHTML = "<b>风险原因（可解释）</b>" + esc(e.risk_reason || "暂无") +
+  $("risk-box").innerHTML = "<b>风险原因</b>" + esc(e.risk_reason || "暂无") +
     (e.breakdown && Object.keys(e.breakdown).length
-      ? '<div class="score-line">评分构成：' +
-        Object.entries(e.breakdown).map(([k2, v]) => esc(k2) + " " + v).join(" ｜ ") + "</div>"
+      ? '<div class="score-line">优先级 ' + Number(e.priority_score || 0).toFixed(1) +
+        " = 频次分 " + (e.breakdown["频次分"] ?? 0) + "×35% + 趋势分 " + (e.breakdown["趋势分"] ?? 0) +
+        "×30% + 集中度分 " + (e.breakdown["集中度分"] ?? 0) + "×15% + 敏感度分 " +
+        (e.breakdown["敏感度分"] ?? 0) + "×20%（规则评分，可复核）</div>"
       : "");
 
-  const aiBadge = e.advice_source === "LLM" ? '<span class="ai-badge">AI 生成</span>' : "";
+  const aiBadge = e.advice_source === "LLM" ? '<span class="ai-badge">AI 检索匹配</span>' : "";
   $("advice-box").innerHTML = "<b>处置建议" + aiBadge + "</b>" +
     "建议关注：" + esc(e.department || "需人工研判") + "<br>" +
     "建议动作：" + esc(e.advice || "—") + "<br>" +
@@ -827,14 +898,23 @@ function drawTrend(e) {
     dates = bd; vals = bv;
   }
   const opt = baseOpt();
-  opt.tooltip.axisPointer = { type: "shadow" };
-  opt.xAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
-  opt.yAxis = { type: "category", data: dates, axisLabel: { color: "#c6cfdf" }, axisTick: { show: false }, axisLine: { show: false } };
+  opt.tooltip.axisPointer = { type: "line" };
+  opt.xAxis = {
+    type: "category", data: dates, boundaryGap: false,
+    axisLabel: { color: "#c6cfdf", fontSize: 11, interval: Math.max(0, Math.ceil(dates.length / 9) - 1) },
+    axisTick: { show: false }, axisLine: { lineStyle: { color: SPLIT_COLOR } },
+  };
+  opt.yAxis = { type: "value", minInterval: 1, axisLabel: { color: AXIS_COLOR }, splitLine: { lineStyle: { color: SPLIT_COLOR } } };
   opt.series = [{
-    type: "bar", data: vals, barWidth: 13,
-    itemStyle: { borderRadius: [0, 6, 6, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-      { offset: 0, color: "#274a8f" }, { offset: 1, color: "#3d7eff" }]) },
-    label: { show: true, position: "right", color: "#c6cfdf", fontSize: 12 },
+    type: "line", data: vals, smooth: true,
+    symbol: "circle", symbolSize: 6,
+    lineStyle: { width: 2.5, color: "#3d7eff" },
+    itemStyle: { color: "#3d7eff", borderColor: "#0a111f", borderWidth: 1 },
+    areaStyle: {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: "rgba(61, 126, 255, .38)" },
+        { offset: 1, color: "rgba(61, 126, 255, .02)" }]),
+    },
   }];
   c.setOption(opt, true);
 }
