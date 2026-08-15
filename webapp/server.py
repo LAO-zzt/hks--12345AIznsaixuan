@@ -39,7 +39,7 @@ app = FastAPI(title="12345 高频事件智能预警与处置辅助系统 API")
 app.mount("/static", StaticFiles(directory=os.path.join(WEB_DIR, "static")), name="static")
 
 # 演示态：仅保留最近一次分析结果（单用户演示场景，不引入数据库）
-STATE = {"df": None, "events": None, "source_meta": None}
+STATE = {"df": None, "events": None, "source_meta": None, "info": {}}
 
 # 结果级缓存：相同 数据源+参数 组合直接命中，避免重复跑全量流水线
 RESULT_CACHE_DIR = os.path.join(config.OUTPUT_DIR, "cache")
@@ -326,6 +326,50 @@ def _save_result_cache(key: str, data: dict):
         pass
 
 
+# ============================ 重启恢复（开发模式：免每次重跑分析） ============================
+import threading as _threading
+
+_RESTORE_LOCK = _threading.Lock()
+
+
+def _restore_latest_cache():
+    """从磁盘恢复最近一次分析结果到会话（按缓存文件 mtime 取最新）。"""
+    with _RESTORE_LOCK:
+        if STATE["df"] is not None:
+            return True
+        try:
+            if not os.path.isdir(RESULT_CACHE_DIR):
+                return False
+            files = [f for f in os.listdir(RESULT_CACHE_DIR)
+                     if f.startswith("result_") and f.endswith(".pkl")]
+            if not files:
+                return False
+            latest = max(files, key=lambda f: os.path.getmtime(os.path.join(RESULT_CACHE_DIR, f)))
+            data = _load_result_cache(latest[len("result_"):-len(".pkl")])
+            if not data or data.get("df") is None:
+                return False
+            STATE["df"], STATE["events"] = data["df"], data.get("events", [])
+            STATE["info"] = data.get("info", {}) or {}
+            return True
+        except Exception:
+            return False
+
+
+@app.on_event("startup")
+def _startup_restore():
+    _threading.Thread(target=_restore_latest_cache, daemon=True).start()
+
+
+@app.get("/api/payload")
+def get_payload():
+    """前端 boot 优先调用：服务端已有（或已恢复）分析结果则秒回，跳过重新分析。"""
+    if not _restore_latest_cache():
+        return {"ok": False, "error": "无可用分析结果"}
+    return {"ok": True, "restored": True,
+            "payload": _build_payload(STATE["df"], STATE["events"], STATE["info"],
+                                      ["已从本地缓存恢复上次分析结果（服务重启免重跑）。"])}
+
+
 def _load_local_secret(name: str) -> str:
     """读取本地密钥文件 webapp/secrets.json（已 gitignore，绝不入库）。"""
     try:
@@ -502,7 +546,7 @@ def clear_cache():
                     removed += 1
     except Exception as e:
         return {"ok": False, "error": "清理失败：%s" % e}
-    STATE.update(df=None, events=None, source_meta=None)
+    STATE.update(df=None, events=None, source_meta=None, info={})
     _SEM.update(df_id=None, matrix=None)
     _DUP.update(df_id=None, mask=None)
     _GIDX.update(df_id=None, buckets=None)
@@ -774,6 +818,7 @@ async def analyze(
             cached = _load_result_cache(cache_key)
             if cached is not None:
                 STATE["df"], STATE["events"] = cached["df"], cached["events"]
+                STATE["info"] = cached.get("info", {}) or {}
                 _SEM.update(df_id=None, matrix=None)
                 _DUP.update(df_id=None, mask=None)
                 _GIDX.update(df_id=None, buckets=None)
@@ -811,7 +856,7 @@ async def analyze(
             events, info, warnings = [], {}, warnings + ["分析流水线失败：%s" % e]
 
         _stage_set("finish")
-        STATE["df"], STATE["events"] = df, events
+        STATE["df"], STATE["events"], STATE["info"] = df, events, info
         _SEM.update(df_id=None, matrix=None)
         _DUP.update(df_id=None, mask=None)
         _GIDX.update(df_id=None, buckets=None)

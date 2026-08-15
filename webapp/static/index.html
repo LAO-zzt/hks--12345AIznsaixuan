@@ -796,8 +796,23 @@ async function loadOverview() {
 }
 async function boot() {
   try {
-    const b = await (await fetch("/api/boot")).json();
-    const ok = await runAnalysis({ datafile: b.default_file || "" });
+    // 开发模式：优先用服务端本地缓存恢复（重启免重跑分析），无缓存再走全量分析
+    let ok = false;
+    try {
+      const r = await (await fetch("/api/payload")).json();
+      if (r.ok && r.payload) {
+        state.payload = r.payload;
+        await loadOverview();
+        try { renderOverview(); } catch (e) { console.error("渲染异常：", e); }
+        ok = true;
+        const n = (r.payload.kpis || {}).total_orders;
+        if (n != null) toast("已恢复上次分析结果（共 " + n.toLocaleString() + " 条工单），更换数据源请点「重新分析」");
+      }
+    } catch (e) { /* 无缓存，走正常分析 */ }
+    if (!ok) {
+      const b = await (await fetch("/api/boot")).json();
+      ok = await runAnalysis({ datafile: b.default_file || "" });
+    }
     const st = $("data-status");
     if (ok) {
       st.classList.remove("loading");
@@ -1014,11 +1029,15 @@ function renderOverview() {
   // KPI（全部可点击进工作台）
   const multi = ov ? ov.multi_orders : 0;
   const dupN = ov ? (ov.dup_orders || 0) : 0;
+  const randomArea = () => {
+    const areas = (ov ? ov.areas : []).map(a => a.area).filter(Boolean);
+    return areas.length ? areas[Math.floor(Math.random() * areas.length)] : "";
+  };
   $("kpi-row").innerHTML =
     kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({ multi: "", dup: "" })) +
     kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1", dup: "" })) +
-    kpiCard(dupN.toLocaleString(), "同址重复工单", "k-cyan", () => goWorkbench({ dup: "1", multi: "" })) +
-    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({}));
+    kpiCard(dupN.toLocaleString(), "同址重复工单", "k-cyan", () => goWorkbench({ dup: "1", multi: "1", area: randomArea() })) +
+    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({ multi: "1", dup: "" }));
 
   // 区域筛选选项
   const areaSel = $("f-area");
