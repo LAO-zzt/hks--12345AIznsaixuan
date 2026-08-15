@@ -106,7 +106,6 @@
   .trend-up { color: var(--red); font-weight: 700; }
   .trend-down { color: var(--green); font-weight: 700; }
   .trend-flat, .trend-unknown { color: var(--muted); }
-  .need-fill { color: var(--red); font-size: 12.5px; font-weight: 600; }
   .ai-badge {
     display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px;
     background: rgba(61,126,255,.18); color: #7ea8ff; border: 1px solid rgba(61,126,255,.5);
@@ -142,10 +141,26 @@
     font-size: 12.5px; padding: 5px 14px; border-radius: 999px; cursor: pointer;
   }
   .map-tab.active { color: var(--text); border-color: var(--accent); background: rgba(61,126,255,.12); }
-  #ov-map { width: 100%; height: 360px; border-radius: 10px; }
+  #ov-map { width: 100%; height: 360px; border-radius: 10px; isolation: isolate; background: #0f1626; background-image: linear-gradient(rgba(61,126,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(61,126,255,.08) 1px,transparent 1px); background-size: 32px 32px; }
   .map-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .leaflet-popup-content-wrapper { background: #0f1626; color: #e8eef9; border: 1px solid #22304d; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+  .leaflet-popup-tip { background: #0f1626; border: 1px solid #22304d; }
+  .leaflet-popup-content { margin: 12px 14px; }
+  .leaflet-popup-content a:hover { background: rgba(61,126,255,.1); }
+  .ov-area-label { background: rgba(15,22,38,.85); color: #8b98b3; font-size: 11px; text-align: center; border-radius: 3px; padding: 1px 4px; border: 1px solid #22304d; }
   .chart { width: 100%; }
   .chart-md { height: 240px; }
+  .chart-sm { height: 200px; }
+  .ov-left-grid { display: grid; grid-template-columns: 1.3fr 1fr; grid-template-rows: auto auto; gap: 14px; }
+  .ov-trend-box { grid-column: 1; grid-row: 1; background: rgba(28,41,66,.4); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; min-height: 290px; }
+  .ov-trend-box .chart { width: 100%; }
+  .ov-area-box { grid-column: 1; grid-row: 2; background: rgba(28,41,66,.4); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: flex-end; min-height: 250px; }
+  .ov-area-box .chart { width: 100%; }
+  .ev-subjects { grid-column: 2; grid-row: 1 / span 2; background: rgba(28,41,66,.4); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-y: auto; }
+  @media (max-width: 900px) { .ov-left-grid { grid-template-columns: 1fr; } .ov-trend-box,.ov-area-box,.ev-subjects { grid-column: 1; grid-row: auto; } }
+  .subject-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .subject-chip { display: inline-flex; align-items: center; gap: 6px; background: rgba(61,126,255,.12); border: 1px solid rgba(61,126,255,.3); color: var(--text); font-size: 12.5px; padding: 5px 11px; border-radius: 999px; }
+  .subject-chip b { color: var(--accent); font-size: 12px; }
   .board-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .tool-input, .tool-select {
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
@@ -164,15 +179,22 @@
   /* 事件详情面板 */
   .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 22px; font-size: 13.5px; }
   .meta-grid .k { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
-  .risk-box, .advice-box {
-    border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7; margin-top: 12px;
-  }
-  .risk-box { background: rgba(244,87,77,.07); border: 1px solid rgba(244,87,77,.28); }
-  .advice-box { background: rgba(45,212,191,.06); border: 1px solid rgba(45,212,191,.28); }
-  .risk-box b, .advice-box b { display: block; margin-bottom: 4px; font-size: 12px; letter-spacing: 1px; }
-  .risk-box b { color: var(--red); }
-  .advice-box b { color: var(--cyan); }
-  .score-line { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .ev-charts { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-top: 14px; }
+  @media (max-width: 900px) { .ev-charts { grid-template-columns: 1fr; } }
+  .ev-chart-col { background: rgba(28,41,66,.4); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .ev-chart-title { font-size: 13px; color: var(--text); margin-bottom: 6px; font-weight: 600; }
+  .ev-dedup { margin-top: 14px; background: rgba(28,41,66,.4); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .ev-dedup-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
+  .dedup-card { background: rgba(15,22,35,.6); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .dedup-card .dc-label { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+  .dedup-card .dc-value { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .dedup-card .dc-value small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .dedup-card .dc-tag { display: inline-block; margin-top: 6px; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+  .tag-high { background: rgba(238,102,102,.18); color: #ff8a8a; }
+  .tag-mid { background: rgba(255,184,0,.18); color: #ffc04d; }
+  .tag-low { background: rgba(45,212,191,.18); color: #5eead4; }
+  .tag-conc { background: rgba(61,126,255,.18); color: #7ba0ff; }
+  .tag-disp { background: rgba(139,152,179,.18); color: #a8b4cc; }
 
   /* ---------- 工作台 ---------- */
   .wb-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; }
@@ -184,14 +206,10 @@
   .wb-chip i:hover { opacity: 1; color: #fff; }
   .wb-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .wb-toolbar .tool-input { width: 260px; }
+  .wb-toolbar .spacer { flex: 1; }
   .wb-actions { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .pagination { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--muted); }
   .pagination .btn { padding: 5px 14px; }
-  .batch-bar {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
-    padding: 10px 16px; margin-bottom: 12px; font-size: 13px;
-  }
   input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 
   /* ---------- 工单详情 ---------- */
@@ -216,7 +234,6 @@
     background: rgba(61,126,255,.1); border: 1px solid rgba(61,126,255,.35);
     border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 8px;
   }
-  .review-log { font-size: 12.5px; color: var(--muted); line-height: 2; }
   .scroll-y { max-height: 330px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
 
   /* ---------- 设置抽屉 ---------- */
@@ -350,24 +367,16 @@
         <div class="map-tabs" id="map-tabs">
           <button class="map-tab active" data-mode="total">全部工单</button>
           <button class="map-tab" data-mode="multi">重复工单</button>
-          <button class="map-tab" data-mode="high">高优先事件</button>
         </div>
         <div id="ov-map"></div>
         <div class="map-note">气泡大小 = 工单量（按区域聚合）· 坐标为顺德十镇街中心点</div>
       </div>
 
       <div class="card">
-        <h2>高频事件榜<span class="h-note">点击行进入工作台核查</span></h2>
+        <h2>多频事件榜<span class="h-note">点击行进入工作台核查</span></h2>
         <div class="board-tools">
           <input class="tool-input" id="f-q" placeholder="搜索事件名称 / 编号…">
           <select class="tool-select" id="f-area"><option value="">全部区域</option></select>
-          <select class="tool-select" id="f-level">
-            <option value="">全部风险等级</option>
-            <option value="高关注">高关注</option>
-            <option value="中关注">中关注</option>
-            <option value="一般">一般</option>
-            <option value="需人工研判">需人工研判</option>
-          </select>
           <span class="h-note" id="board-count"></span>
         </div>
         <div class="board-scroll">
@@ -378,10 +387,8 @@
                 <th data-key="name" class="sortable">事件</th>
                 <th data-key="area" class="sortable">区域</th>
                 <th data-key="frequency" class="sortable">频次</th>
-                <th data-key="last_7d" class="sortable">近7天</th>
-                <th data-key="trend" class="sortable">趋势</th>
-                <th data-key="risk_level" class="sortable">风险等级</th>
-                <th data-key="priority_score" class="sortable">优先级</th>
+                <th data-key="first_seen" class="sortable">首次出现</th>
+                <th data-key="last_seen" class="sortable">最近出现</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -392,17 +399,37 @@
 
     <div class="ov-grid2">
       <div class="card">
-        <h2>整体趋势<span class="h-note">辅助判断全局变化</span></h2>
-        <div class="chart chart-md" id="ov-trend"></div>
+        <h2>整体趋势<span class="h-note" id="ov-trend-note">全部区域 · 辅助判断全局变化</span></h2>
+        <div class="ov-left-grid">
+          <div class="ov-trend-box">
+            <div class="chart chart-md" id="ov-trend"></div>
+          </div>
+          <div class="ov-area-box">
+            <div class="ev-chart-title">区域分布 <span class="h-note" id="ov-area-note">选中事件</span></div>
+            <div class="chart chart-sm" id="ev-area-pie"></div>
+          </div>
+          <div class="ev-subjects" id="ov-subjects">
+            <div class="ev-chart-title">高频主体 <span class="h-note">工单中识别到的主体</span></div>
+            <div class="muted" style="padding:24px 10px;font-size:12.5px;text-align:center">主体列表加载中…</div>
+          </div>
+        </div>
       </div>
       <div class="card">
         <h2>事件深度分析<span class="h-note">选中榜单事件查看</span></h2>
-        <div id="ev-empty" class="muted" style="padding:30px 10px;font-size:13px">从高频事件榜选择一个事件，查看趋势、风险与处置建议。</div>
+        <div id="ev-empty" class="muted" style="padding:30px 10px;font-size:13px">从多频事件榜选择一个事件，查看趋势、区域分布与工单样例。</div>
         <div id="ev-body" class="hidden">
           <div class="meta-grid" id="ev-meta"></div>
-          <div style="margin-top:14px" class="chart chart-md" id="ev-trend"></div>
-          <div class="risk-box" id="ev-risk"></div>
-          <div class="advice-box" id="ev-advice"></div>
+          <div class="ev-charts">
+            <div class="ev-chart-col" style="grid-column:1/-1">
+              <div class="ev-chart-title">日频次趋势</div>
+              <div class="chart chart-md" id="ev-trend"></div>
+            </div>
+          </div>
+          <div class="ev-dedup">
+            <div class="ev-chart-title">多频识别依据 <span class="h-note">判定为多频的关键指标</span></div>
+            <div id="ev-dedup-grid" class="ev-dedup-grid"></div>
+          </div>
+          <div id="ev-action" style="margin-top:14px"></div>
         </div>
       </div>
     </div>
@@ -422,14 +449,8 @@
           <option value="1">多频工单</option>
           <option value="0">非多频</option>
         </select>
-        <select class="tool-select" id="wb-level">
-          <option value="">风险等级</option>
-          <option value="高关注">高关注</option>
-          <option value="中关注">中关注</option>
-          <option value="一般">一般</option>
-        </select>
         <select class="tool-select" id="wb-sort">
-          <option value="default">默认（高优先优先）</option>
+          <option value="default">默认（频次降序）</option>
           <option value="freq">按频次</option>
           <option value="time">按时间最新</option>
         </select>
@@ -444,7 +465,7 @@
           <thead>
             <tr>
               <th>工单号</th><th>标题 / 诉求</th><th>区域</th><th>主体</th><th>事件</th>
-              <th>频次</th><th>风险等级</th><th>时间</th>
+              <th>频次</th><th>时间</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -482,8 +503,18 @@
       <p>点击选择或拖拽 CSV / Excel 工单文件</p>
       <div class="file-name" id="file-name"></div>
     </div>
-    <label class="muted" style="font-size:12px;display:block;margin-top:10px">或选择本地数据文件（放入 data/input 目录即可识别）</label>
-    <select class="file-select" id="file-select"><option value="">（使用内置样例数据）</option></select>
+    <label class="muted" style="font-size:12px;display:block;margin-top:10px">或选择已保存的数据源</label>
+    <select class="file-select" id="file-select"></select>
+    <button class="btn small" id="btn-add-feishu" style="margin-top:8px;width:100%">+ 添加飞书在线表格</button>
+    <div id="feishu-add-form" class="hidden" style="margin-top:8px;padding:10px;background:rgba(61,126,255,.06);border-radius:8px">
+      <input class="webhook-input" id="feishu-url-input" type="text" placeholder="粘贴飞书多维表格链接（https://xxx.feishu.cn/base/...?table=...）">
+      <input class="webhook-input" id="feishu-name-input" style="margin-top:6px" type="text" placeholder="为该数据源命名（如：抽测2万条）">
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="btn small" id="btn-save-feishu" style="flex:1">保存</button>
+        <button class="btn small" id="btn-cancel-feishu" style="flex:1">取消</button>
+      </div>
+    </div>
+    <label class="muted" style="font-size:12px;display:block;margin-top:6px">飞书凭证读取 密钥/config.env，无需手动填写</label>
     <div class="data-preview hidden" id="data-preview">
       <div class="dp-item"><b id="dp-rows">—</b><span>工单数量</span></div>
       <div class="dp-item"><b id="dp-range">—</b><span>时间范围</span></div>
@@ -535,22 +566,17 @@
           <input type="checkbox" id="p-emb">
           <span>启用本地语义向量增强（可选，缺失自动回退）</span>
         </div>
-        <div class="adv-line">智能建议增强</div>
+        <div class="adv-line">LLM 判重增强</div>
         <div class="check-row llm-row">
           <label><input type="radio" name="llm_mode" value="off" checked> 不启用</label>
-          <label><input type="radio" name="llm_mode" value="configured"> 使用已配置的AI服务（DeepSeek）</label>
+          <label><input type="radio" name="llm_mode" value="configured"> 使用已配置的AI服务</label>
         </div>
         <details class="admin-details">
           <summary>管理员设置（自定义AI服务密钥）</summary>
-          <input class="webhook-input" id="p-llm-key" type="password" placeholder="DeepSeek API Key（留空则使用本机已配置密钥）">
+          <input class="webhook-input" id="p-llm-key" type="password" placeholder="AI 服务 API Key（留空则使用本机已配置密钥）">
         </details>
         <div class="adv-line">结果流转</div>
         <input class="webhook-input" id="p-webhook" type="password" placeholder="飞书群机器人 Webhook 地址（留空跳过推送）">
-        <details style="margin-top:12px">
-          <summary>风险评分规则说明</summary>
-          <p>优先级 = 频次分×35% + 趋势分×30% + 集中度分×15% + 敏感度分×20%<br>
-             趋势窗口：近3天 vs 基线7天 · 风险等级：≥70 高关注 · ≥40 中关注</p>
-        </details>
       </div>
     </details>
   </div>
@@ -570,7 +596,7 @@
 <script>
 /* ================= 全局状态与工具 ================= */
 const state = { payload: null, overview: null, evSelected: -1, mapMode: "total", selFile: null };
-const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", level: "", event: "", sort: "default" };
+const wb = { page: 1, size: 50, q: "", area: "", subject: "", multi: "", event: "", sort: "default" };
 const $ = (id) => document.getElementById(id);
 
 function esc(s) {
@@ -583,10 +609,6 @@ function toast(msg, isErr) {
   t.className = "show" + (isErr ? " err" : "");
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.className = "", 3800);
-}
-function riskBadge(level) {
-  const map = { "高关注": "b-red", "中关注": "b-amber", "一般": "b-green", "需人工研判": "b-gray" };
-  return '<span class="badge ' + (map[level] || "b-gray") + '">' + esc(level || "—") + "</span>";
 }
 function trendSpan(t) {
   if (t === "上升") return '<span class="trend-up">▲ 上升</span>';
@@ -627,16 +649,15 @@ let progTimer = null;
 function startProgress(useLLM) {
   const stages = [
     "正在加载并清洗工单数据…",
-    "AI 正在理解工单内容…",
-    "AI 正在识别重复与高频事件…",
-    "生成事件画像与趋势…",
-    "风险与优先级判断中…",
+    "AI 正在理解工单内容（实体识别）…",
+    "正在聚类与多频识别…",
   ];
-  if (useLLM) stages.push("AI 模型推理中，正在匹配处置建议…");
+  if (useLLM) stages.push("LLM 判重推理中，正在合并相似事件簇…");
+  stages.push("生成多频事件画像…");
   stages.push("正在整理总览数据…");
   let idx = 0;
   $("prog-text").textContent = stages[0];
-  $("prog-sub").textContent = useLLM ? "启用 AI 增强，预计 30~50 秒" : "系统自动分析中，请稍候";
+  $("prog-sub").textContent = useLLM ? "启用 LLM 判重，预计 30~60 秒" : "系统自动分析中，请稍候";
   $("prog-fill").style.width = "5%";
   $("progress-overlay").classList.remove("hidden");
   let pct = 5;
@@ -670,7 +691,18 @@ async function runAnalysis(opts) {
   fd.append("llm_key", $("p-llm-key").value.trim());
   if (opts && opts.file) fd.append("file", opts.file);
   else if (opts && opts.datafile != null) fd.append("datafile", opts.datafile);
-  else if ($("file-select").value) fd.append("datafile", $("file-select").value);
+  else if (opts && opts.feishu_url) fd.append("feishu_url", opts.feishu_url);
+  else {
+    const v = $("file-select").value;
+    if (v.startsWith("feishu:")) {
+      const id = v.slice("feishu:".length);
+      const data = await (await fetch("/api/datafiles")).json();
+      const s = (data.feishu_sources || []).find(x => x.id === id);
+      if (s) fd.append("feishu_url", s.url);
+    } else if (v.startsWith("local:")) {
+      fd.append("datafile", v.slice("local:".length));
+    }
+  }
 
   startProgress(llmEnabled());
   try {
@@ -680,7 +712,7 @@ async function runAnalysis(opts) {
     if (!data.ok) { toast(data.error || "分析失败", true); return false; }
     state.payload = data.payload;
     await loadOverview();
-    renderOverview();
+    try { renderOverview(); } catch (e) { console.error("渲染异常：", e); }
     return true;
   } catch (e) {
     stopProgress();
@@ -726,9 +758,22 @@ function renderDrawerSummary() {
   const scope = (document.querySelector('input[name="scope"]:checked') || {}).value || "all";
   const scopeName = { all: "全部数据", d30: "近30天", d60: "近60天" }[scope];
   const strat = document.querySelector(".strategy-card.sel");
-  const src = state.overview
-    ? (state.overview.source.rows.toLocaleString() + " 条工单")
-    : (state.selFile ? state.selFile.name : "内置样例");
+  const furl = $("feishu-url-input").value.trim();
+  const selVal = $("file-select").value;
+  let src;
+  if (state.overview && state.overview.source && state.overview.source.rows) {
+    const m = state.overview.source.meta;
+    src = state.overview.source.rows.toLocaleString() + " 条工单" + (m && m.source ? "（" + m.source + "）" : "");
+  } else if (selVal.startsWith("local:")) {
+    src = selVal.slice("local:".length);
+  } else if (selVal.startsWith("feishu:")) {
+    const opt = $("file-select").selectedOptions[0];
+    src = opt ? opt.textContent : "飞书表格";
+  } else if (state.selFile) {
+    src = state.selFile.name;
+  } else {
+    src = "内置样例";
+  }
   $("st-summary").innerHTML =
     '<span class="st-chip">分析模式 <b>' + (strat ? strat.dataset.strategy === "default" ? "推荐" : strat.querySelector("b").textContent : "推荐") + '</b></span>' +
     '<span class="st-chip">分析范围 <b>' + scopeName + '</b></span>' +
@@ -749,6 +794,7 @@ document.querySelectorAll(".strategy-card").forEach(card => {
     $("v-freq").textContent = s.freq;
     const radio = document.querySelector('input[name="scope"][value="' + s.scope + '"]');
     if (radio) radio.checked = true;
+    renderDrawerSummary();
   });
 });
 ["freq", "eps", "min"].forEach(k => {
@@ -794,15 +840,32 @@ async function loadLocalFiles() {
     sel.innerHTML = '<option value="">（使用内置样例数据）</option>';
     (data.files || []).forEach(f => {
       const opt = document.createElement("option");
-      opt.value = f.name;
-      opt.textContent = f.name + "（" + f.size_mb + " MB）";
+      opt.value = "local:" + f.name;
+      opt.textContent = "📁 " + f.name + "（" + f.size_mb + " MB）";
+      sel.appendChild(opt);
+    });
+    (data.feishu_sources || []).forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = "feishu:" + s.id;
+      opt.textContent = "☁ " + s.name;
       sel.appendChild(opt);
     });
   } catch (e) { /* 忽略 */ }
 }
 $("file-select").addEventListener("change", () => {
   state.selFile = null; fi.value = ""; $("file-name").textContent = "";
-  loadPreview({ datafile: $("file-select").value || "sample.csv" });
+  const v = $("file-select").value;
+  if (v.startsWith("feishu:")) {
+    const id = v.slice("feishu:".length);
+    fetch("/api/datafiles").then(r => r.json()).then(d => {
+      const s = (d.feishu_sources || []).find(x => x.id === id);
+      if (s) loadPreview({ feishu_url: s.url });
+    });
+  } else if (v.startsWith("local:")) {
+    loadPreview({ datafile: v.slice("local:".length) });
+  } else {
+    loadPreview({ datafile: "sample.csv" });
+  }
 });
 async function loadPreview(params) {
   const box = $("data-preview");
@@ -812,7 +875,8 @@ async function loadPreview(params) {
   try {
     const fd = new FormData();
     if (params.file) fd.append("file", params.file);
-    else fd.append("datafile", params.datafile);
+    else if (params.feishu_url) fd.append("feishu_url", params.feishu_url);
+    else fd.append("datafile", params.datafile || "sample.csv");
     const d = await (await fetch("/api/preview", { method: "POST", body: fd })).json();
     if (!d.ok) { $("dp-note").textContent = "数据读取失败：" + (d.error || ""); return; }
     $("dp-rows").textContent = d.rows.toLocaleString() + " 条";
@@ -832,10 +896,20 @@ function renderOverview() {
 
   // 数据源条
   const s = ov ? ov.source : {};
+  const meta = s.meta || null;
+  const selVal = $("file-select").value;
+  const selOpt = $("file-select").selectedOptions[0];
+  let srcName = "12345工单库";
+  if (meta && meta.source) srcName = "飞书多维表格";
+  else if (state.selFile) srcName = state.selFile.name;
+  else if (selVal.startsWith("local:")) srcName = selVal.slice("local:".length);
+  else if (selVal.startsWith("feishu:") && selOpt) srcName = selOpt.textContent;
+  else if (selVal) srcName = selVal;
   $("source-bar").innerHTML =
-    "当前数据源：<b>" + (state.selFile ? esc(state.selFile.name) : ($("file-select").value || "12345工单库")) + "</b>" +
+    "当前数据源：<b>" + esc(srcName) + "</b>" +
     (s.rows ? " · <b>" + s.rows.toLocaleString() + "</b> 条工单" : "") +
     (s.time_min ? " · " + s.time_min + " ~ " + s.time_max : "") +
+    (meta && meta.source ? ' · 溯源：<span class="muted">' + esc(meta.source) + (meta.table_id ? " · 表 " + esc(meta.table_id) : "") + "</span>" : "") +
     " · 识别路线：" + esc(p.method) +
     '<span class="link" onclick="openDrawer()">⚙ 更换数据源 / 调整策略</span>';
 
@@ -844,7 +918,7 @@ function renderOverview() {
   $("kpi-row").innerHTML =
     kpiCard(p.kpis.total_orders.toLocaleString(), "总工单", "", () => goWorkbench({})) +
     kpiCard(multi.toLocaleString(), "重复工单（多频）", "k-cyan", () => goWorkbench({ multi: "1" })) +
-    kpiCard(p.kpis.high_events, "高关注事件", "k-red", () => goWorkbench({ level: "高关注" }));
+    kpiCard(p.kpis.multi_events.toLocaleString(), "多频事件", "k-red", () => goWorkbench({}));
 
   // 区域筛选选项
   const areaSel = $("f-area");
@@ -858,6 +932,22 @@ function renderOverview() {
   renderBoard();
   renderOvMap();
   renderOvTrend();
+  renderOvSubjects();
+}
+function renderOvSubjects() {
+  const ov = state.overview;
+  const box = $("ov-subjects");
+  if (!box) return;
+  const list = (ov && ov.subjects) || [];
+  if (!list.length) {
+    box.innerHTML = '<div class="ev-chart-title">高频主体 <span class="h-note">工单中识别到的主体（如派出所、酒吧等）</span></div>' +
+      '<div class="muted" style="padding:24px 10px;font-size:12.5px;text-align:center">暂无识别到的主体</div>';
+    return;
+  }
+  const html = list.map(s =>
+    '<span class="subject-chip">' + esc(s.subject) + ' <b>' + s.count + '</b></span>').join("");
+  box.innerHTML = '<div class="ev-chart-title">高频主体 <span class="h-note">工单中识别到的主体（如派出所、酒吧等）</span></div>' +
+    '<div class="subject-list">' + html + "</div>";
 }
 function kpiCard(num, lbl, cls, onclick) {
   const id = "kpi-" + Math.random().toString(36).slice(2, 8);
@@ -868,28 +958,22 @@ function kpiCard(num, lbl, cls, onclick) {
 
 /* 事件榜（排序 + 筛选，点击进入工作台） */
 const boardSort = { key: "", dir: 1 };
-const LEVEL_RANK = { "高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3 };
-const TREND_RANK = { "上升": 0, "平稳": 1, "无法判断": 2, "下降": 3 };
 function boardView() {
   const p = state.payload;
   const q = ($("f-q").value || "").trim().toLowerCase();
-  const fa = $("f-area").value, fl = $("f-level").value;
+  const fa = $("f-area").value;
   let rows = p.events.map((e, i) => ({ e, i }));
   if (fa) rows = rows.filter(r => r.e.area === fa);
-  if (fl) rows = rows.filter(r => r.e.risk_level === fl);
   if (q) rows = rows.filter(r =>
     (r.e.type || "").toLowerCase().includes(q) ||
     (r.e.subject || "").toLowerCase().includes(q) ||
     (r.e.event_id || "").toLowerCase().includes(q));
   if (!boardSort.key) {
-    rows.sort((a, b) => (LEVEL_RANK[a.e.risk_level] ?? 9) - (LEVEL_RANK[b.e.risk_level] ?? 9) || b.e.frequency - a.e.frequency);
+    rows.sort((a, b) => b.e.frequency - a.e.frequency);
   } else {
     const k = boardSort.key, dir = boardSort.dir;
     const val = (e) => {
       if (k === "name") return (e.subject.startsWith("（") || e.subject.startsWith("多主体聚合") ? e.type : e.subject) || "";
-      if (k === "risk_level") return LEVEL_RANK[e.risk_level] ?? 9;
-      if (k === "trend") return TREND_RANK[e.trend] ?? 9;
-      if (k === "priority_score") return Number(e.priority_score || 0);
       return e[k] ?? "";
     };
     rows.sort((a, b) => {
@@ -915,19 +999,33 @@ function renderBoard() {
       '<td><div class="ev-name">' + esc(name) + '</div><div class="ev-sub">' + esc(sub) + "</div></td>" +
       "<td>" + esc(e.area) + "</td>" +
       "<td><b>" + e.frequency + "</b></td>" +
-      "<td>" + e.last_7d + "</td>" +
-      "<td>" + trendSpan(e.trend) + "</td>" +
-      "<td>" + riskBadge(e.risk_level) + "</td>" +
-      "<td>" + Number(e.priority_score || 0).toFixed(1) + "</td>" +
+      "<td>" + esc(e.first_seen || "—") + "</td>" +
+      "<td>" + esc(e.last_seen || "—") + "</td>" +
       "</tr>";
   }).join("");
   $("event-table").querySelectorAll("tbody tr").forEach(tr => {
+    let clickTimer = null;
     tr.addEventListener("click", ev => {
-      const e = state.payload.events[+tr.dataset.i];
-      goWorkbench({ event: e.event_id });
+      if (ev.target.closest("a,button")) return;
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
+      clickTimer = setTimeout(() => { clickTimer = null; selectEvent(+tr.dataset.i); }, 240);
     });
-    tr.addEventListener("dblclick", () => selectEvent(+tr.dataset.i));
+    tr.addEventListener("dblclick", ev => {
+      if (ev.target.closest("a,button")) return;
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+      const ev_row = (state.payload && state.payload.events || [])[+tr.dataset.i];
+      if (ev_row) goWorkbench({ event: ev_row.event_id });
+    });
   });
+  const trList = $("event-table").querySelectorAll("tbody tr");
+  if (trList.length) {
+    const cur = state.evSelected;
+    const stillIn = cur != null && Array.from(trList).some(tr => +tr.dataset.i === cur);
+    if (!stillIn) selectEvent(+trList[0].dataset.i);
+    else document.querySelectorAll("#event-table tbody tr").forEach(tr => {
+      tr.classList.toggle("sel", +tr.dataset.i === cur);
+    });
+  }
   $("event-table").querySelectorAll("th.sortable").forEach(th => {
     th.classList.remove("asc", "desc");
     if (th.dataset.key === boardSort.key)
@@ -938,49 +1036,79 @@ document.querySelectorAll("#event-table th.sortable").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.dataset.key;
     if (boardSort.key === k) boardSort.dir *= -1;
-    else { boardSort.key = k; boardSort.dir = ["frequency", "last_7d", "priority_score"].includes(k) ? -1 : 1; }
+    else { boardSort.key = k; boardSort.dir = ["frequency"].includes(k) ? -1 : 1; }
     renderBoard();
   });
 });
 $("f-q").addEventListener("input", renderBoard);
-$("f-area").addEventListener("change", renderBoard);
-$("f-level").addEventListener("change", renderBoard);
+$("f-area").addEventListener("change", () => { renderBoard(); renderOvTrend(); });
 
-/* 全局地图（四档切换 + 区域点击进工作台） */
-let ovMap = null, ovMarkers = null;
+/* 全局地图（四档切换 + 区域点击进工作台；放大后大圆范围+小点散开叠加） */
+let ovMap = null, ovMarkers = null, ovZoomBound = false;
+const OV_EXPAND_ZOOM = 12; // 放大到该级别起，区域大圆内叠加事件小点
 function renderOvMap() {
   const ov = state.overview;
-  if (!ov || !window.L) return;
+  if (!ov || !window.L || !ov.areas) return;
   if (!ovMap) {
     ovMap = L.map("ov-map", { zoomControl: true, attributionControl: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(ovMap);
+    L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+      { maxZoom: 18, subdomains: "1234", keepBuffer: 2, crossOrigin: true }
+    ).addTo(ovMap);
+    ovMap.on("zoomend", () => setTimeout(renderOvMap, 50));
   }
-  if (ovMarkers) ovMarkers.forEach(m => ovMap.removeLayer(m));
+  if (ovMarkers) ovMarkers.forEach(m => { try { ovMap.removeLayer(m); } catch (e) {} });
   ovMarkers = [];
-  const mode = state.mapMode;
-  const items = ov.areas.filter(a => a[mode] > 0);
+  const mode = state.mapMode || "total";
+  const items = ov.areas.filter(a => a && typeof a[mode] === "number" && a[mode] > 0);
   if (!items.length) return;
   const maxV = Math.max.apply(null, items.map(a => a[mode]));
+  const modeColor = mode === "high" ? "#f4574d" : (mode === "multi" ? "#f5a623" : "#3d7eff");
+  const modeName = { total: "全部工单", multi: "重复工单", high: "高优先事件工单" }[mode] || "工单";
+  const showDots = ovMap.getZoom() >= OV_EXPAND_ZOOM;
+
   items.forEach(a => {
-    const r = 9 + 24 * Math.sqrt(a[mode] / maxV);
-    const mk = L.circleMarker([a.lat, a.lon], {
-      radius: r, color: "#ffb4ae", weight: 1.5,
-      fillColor: mode === "high" ? "#f4574d" : (mode === "multi" ? "#f5a623" : "#3d7eff"),
-      fillOpacity: .55,
-    }).addTo(ovMap);
-    const modeName = { total: "全部工单", multi: "重复工单", high: "高优先事件工单" }[mode];
-    mk.bindTooltip(a.area + " · " + modeName + " " + a[mode].toLocaleString() + " 条",
+    // 始终绘制：区域大圆
+    // 低zoom: circleMarker 屏幕像素固定（原样）；高zoom: circle 地理半径包住小点
+    const rPx = 9 + 24 * Math.sqrt(a[mode] / maxV);
+    const big = showDots
+      ? L.circle([a.lat, a.lon], { radius: 1500, color: "#ffb4ae", weight: 1.5, fillColor: modeColor, fillOpacity: 0.15 })
+      : L.circleMarker([a.lat, a.lon], { radius: rPx, color: "#ffb4ae", weight: 1.5, fillColor: modeColor, fillOpacity: 0.55 });
+    big.addTo(ovMap);
+    big.bindTooltip(a.area + " · " + modeName + " " + a[mode].toLocaleString() + " 条",
       { direction: "top", offset: [0, -6] });
-    mk.on("click", () => {
+    big.on("click", () => {
       const f = { area: a.area };
       if (mode === "multi") f.multi = "1";
-      if (mode === "high") f.level = "高关注";
       goWorkbench(f);
     });
-    ovMarkers.push(mk);
+    ovMarkers.push(big);
+
+    // 放大后叠加：该区域 Top5 事件小点（散开在大圆内，屏幕像素固定便于点击）
+    if (showDots && a.top_events && a.top_events.length) {
+      const tops = a.top_events.slice(0, 5);
+      const maxF = Math.max.apply(null, tops.map(t => t.frequency));
+      tops.forEach((t, idx) => {
+        const angle = idx * 2.4;
+        const radius = 0.004 * (1 + idx * 0.4);
+        const pos = [a.lat + radius * Math.sin(angle), a.lon + radius * Math.cos(angle)];
+        const r2 = 4 + 8 * Math.sqrt(t.frequency / maxF);
+        const mk = L.circleMarker(pos, {
+          radius: r2, color: "#ffe3df", weight: 1.2,
+          fillColor: modeColor, fillOpacity: .85,
+        }).addTo(ovMap);
+        mk.bindTooltip(esc(t.name) + " · " + t.frequency + " 条<br><span style='color:#888;font-size:11px'>[区域内事件示意 · 点击查看该区域此事件工单]</span>",
+          { direction: "top", offset: [0, -4] });
+        mk.on("click", (e) => { e.originalEvent.stopPropagation(); goWorkbench({ event: t.event_id, area: a.area }); });
+        ovMarkers.push(mk);
+      });
+    }
   });
-  const bounds = L.latLngBounds(items.map(a => [a.lat, a.lon]));
-  ovMap.fitBounds(bounds, { padding: [30, 30] });
+
+  if (!ovZoomBound) {
+    const bounds = L.latLngBounds(items.map(a => [a.lat, a.lon]));
+    ovMap.fitBounds(bounds, { padding: [30, 30] });
+    ovZoomBound = true;
+  }
 }
 document.querySelectorAll("#map-tabs .map-tab").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -997,9 +1125,15 @@ function renderOvTrend() {
   const ov = state.overview;
   if (!ov) return;
   const el = $("ov-trend");
-  if (!ovTrendChart) ovTrendChart = echarts.init(el);
-  let dates = ov.daily_all.map(d => d.date.slice(5));
-  let vals = ov.daily_all.map(d => d.count);
+  if (!ovTrendChart) ovTrendChart = echarts.init(el); else ovTrendChart.resize();
+  const area = $("f-area").value;
+  const note = $("ov-trend-note");
+  const series = area && ov.daily_by_area && ov.daily_by_area[area]
+    ? ov.daily_by_area[area]
+    : ov.daily_all;
+  if (note) note.textContent = (area || "全部区域") + " · 辅助判断全局变化";
+  let dates = series.map(d => d.date.slice(5));
+  let vals = series.map(d => d.count);
   if (dates.length > 31) {
     const bd = [], bv = [];
     for (let i = 0; i < dates.length; i += 7) {
@@ -1028,7 +1162,7 @@ function renderOvTrend() {
 }
 
 /* 事件深度分析（选中榜单事件后展示，双击行触发；默认自动选中第一个） */
-let evTrendChart = null;
+let evTrendChart = null, evAreaChart = null;
 function selectEvent(i) {
   const p = state.payload;
   state.evSelected = i;
@@ -1038,22 +1172,15 @@ function selectEvent(i) {
   $("ev-meta").innerHTML =
     meta("事件", (e.subject.startsWith("（") || e.subject.startsWith("多主体聚合") ? "" : e.subject + " · ") + e.type) +
     meta("所属区域", e.area) +
-    meta("累计频次", e.frequency + "（近24h " + e.last_24h + " / 近7天 " + e.last_7d + "）") +
-    meta("风险等级", riskBadge(e.risk_level).replace(/</g, "<") + " 优先级 " + Number(e.priority_score || 0).toFixed(1)) +
+    meta("累计频次", e.frequency) +
     meta("首次出现", e.first_seen) + meta("最近出现", e.last_seen);
-  $("ev-risk").innerHTML = "<b>风险原因</b>" + esc(e.risk_reason || "暂无") +
-    (e.breakdown && Object.keys(e.breakdown).length
-      ? '<div class="score-line">优先级 ' + Number(e.priority_score || 0).toFixed(1) +
-        " = 频次分 " + (e.breakdown["频次分"] ?? 0) + "×35% + 趋势分 " + (e.breakdown["趋势分"] ?? 0) +
-        "×30% + 集中度分 " + (e.breakdown["集中度分"] ?? 0) + "×15% + 敏感度分 " +
-        (e.breakdown["敏感度分"] ?? 0) + "×20%（规则评分，可复核）</div>" : "");
-  const aiBadge = e.advice_source === "LLM" ? '<span class="ai-badge">AI 检索匹配</span>' : "";
-  $("ev-advice").innerHTML = "<b>处置建议" + aiBadge + "</b>" +
-    "建议关注：" + esc(e.department || "需人工研判") + "<br>" +
-    "建议动作：" + esc(e.advice || "—");
+  $("ev-action").innerHTML = '<button class="btn" onclick="goWorkbench({event:\'' + esc(e.event_id) + '\'})">进入工作台核查此事件 →</button>';
+  document.querySelectorAll("#event-table tbody tr").forEach(tr => {
+    tr.classList.toggle("sel", +tr.dataset.i === i);
+  });
   // 趋势图
   const el = $("ev-trend");
-  if (!evTrendChart) evTrendChart = echarts.init(el);
+  if (!evTrendChart) evTrendChart = echarts.init(el); else evTrendChart.resize();
   let dates = (e.daily || []).map(d => d.date.slice(5));
   let vals = (e.daily || []).map(d => d.count);
   if (dates.length > 31) {
@@ -1082,6 +1209,42 @@ function selectEvent(i) {
         { offset: 0, color: "rgba(61,126,255,.35)" }, { offset: 1, color: "rgba(61,126,255,.02)" }]) },
     }],
   }, true);
+  // 区域分布饼图
+  const pieEl = $("ev-area-pie");
+  if (!evAreaChart) evAreaChart = echarts.init(pieEl); else evAreaChart.resize();
+  const areas = (e.areas || []).slice(0, 8);
+  const areaNote = $("ov-area-note");
+  if (areaNote) areaNote.textContent = e.subject && !e.subject.startsWith("（") && !e.subject.startsWith("多主体聚合")
+    ? e.subject + " · " + e.type : e.type;
+  evAreaChart.setOption({
+    textStyle: { fontFamily: "Microsoft YaHei" },
+    tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
+    legend: { type: "scroll", orient: "horizontal", bottom: 0, left: "center", textStyle: { color: "#c6cfdf", fontSize: 11 }, itemWidth: 10, itemHeight: 10, itemGap: 8 },
+    series: [{
+      type: "pie", radius: ["38%", "62%"], center: ["50%", "42%"],
+      label: { show: false }, labelLine: { show: false },
+      data: areas.map(a => ({ name: a.area, value: a.count })),
+      itemStyle: { borderColor: "#0f1623", borderWidth: 2 },
+    }],
+  }, true);
+  if (!areas.length) evAreaChart.setOption({ title: { text: "无区域数据", left: "center", top: "center", textStyle: { color: "#8b98b3", fontSize: 12 } } });
+  // 多频识别依据
+  const m = e.dedup_metrics || {};
+  const freqTagCls = m.freq_level === "高发" ? "tag-high" : (m.freq_level === "中频" ? "tag-mid" : "tag-low");
+  const subjTagCls = m.subject_type === "集中" ? "tag-conc" : "tag-disp";
+  const areaTagCls = m.area_type === "集中" ? "tag-conc" : "tag-disp";
+  const submitterTag = m.submitter_type || "—";
+  const grid = $("ev-dedup-grid");
+  if (grid) {
+    grid.innerHTML = [
+      '<div class="dedup-card"><div class="dc-label">日均频次</div><div class="dc-value">' + (m.daily_avg || 0) + '<small>条/天</small></div><span class="dc-tag ' + freqTagCls + '">' + esc(m.freq_level || "—") + '</span></div>',
+      '<div class="dedup-card"><div class="dc-label">首末间隔</div><div class="dc-value">' + esc(m.span_days || "—") + '</div><span class="dc-tag tag-disp">累计 ' + e.frequency + ' 条</span></div>',
+      '<div class="dedup-card"><div class="dc-label">独立提交人</div><div class="dc-value">' + (m.unique_submitters || 0) + '<small>人</small></div><span class="dc-tag tag-conc">' + esc(submitterTag) + '</span></div>',
+      '<div class="dedup-card"><div class="dc-label">主体集中度</div><div class="dc-value">' + (m.subject_concentration || 0) + '<small>%</small></div><span class="dc-tag ' + subjTagCls + '">' + esc(m.subject_type || "—") + '</span></div>',
+      '<div class="dedup-card"><div class="dc-label">区域集中度</div><div class="dc-value">' + (m.area_concentration || 0) + '<small>%</small></div><span class="dc-tag ' + areaTagCls + '">' + esc(m.area_type || "—") + '</span></div>',
+      '<div class="dedup-card"><div class="dc-label">判定结论</div><div class="dc-value" style="font-size:14px">' + (m.freq_level === "高发" ? "高度多频" : (m.freq_level === "中频" ? "中度多频" : "轻度多频")) + '</div><span class="dc-tag ' + freqTagCls + '">建议核查</span></div>',
+    ].join("");
+  }
 }
 function meta(k, v) {
   return '<div><div class="k">' + esc(k) + '</div><div class="v">' + (String(v).startsWith("<") ? v : esc(v)) + "</div></div>";
@@ -1089,6 +1252,7 @@ function meta(k, v) {
 window.addEventListener("resize", () => {
   if (ovTrendChart) ovTrendChart.resize();
   if (evTrendChart) evTrendChart.resize();
+  if (evAreaChart) evAreaChart.resize();
   if (ovMap) ovMap.invalidateSize();
 });
 /* ================= 第二页 工单工作台 ================= */
@@ -1107,7 +1271,7 @@ async function renderWorkbench() {
   // 主体选项
   const subjSel = $("wb-subject");
   if (subjSel.options.length <= 1 && state.overview) {
-    (state.overview.top_subjects || []).forEach(s => {
+    (state.overview.subjects || []).forEach(s => {
       const o = document.createElement("option");
       o.value = s.subject; o.textContent = s.subject + " (" + s.count + ")";
       subjSel.appendChild(o);
@@ -1118,7 +1282,6 @@ async function renderWorkbench() {
   $("wb-area").value = wb.area;
   $("wb-subject").value = wb.subject;
   $("wb-multi").value = wb.multi;
-  $("wb-level").value = wb.level;
   $("wb-sort").value = wb.sort;
 
   // 筛选条件 chips
@@ -1129,7 +1292,6 @@ async function renderWorkbench() {
   if (wb.subject) chips.push(["subject", "主体：" + wb.subject]);
   if (wb.multi === "1") chips.push(["multi", "重复状态：多频"]);
   if (wb.multi === "0") chips.push(["multi", "重复状态：非多频"]);
-  if (wb.level) chips.push(["level", "风险等级：" + wb.level]);
   if (wb.event) chips.push(["event", "事件：" + evName]);
   if (wb.q) chips.push(["q", "关键词：" + wb.q]);
   $("wb-chips").innerHTML = chips.length
@@ -1140,7 +1302,7 @@ async function renderWorkbench() {
 
   const params = new URLSearchParams({
     page: wb.page, size: wb.size, q: wb.q, area: wb.area, subject: wb.subject,
-    multi: wb.multi, level: wb.level, event: wb.event, sort: wb.sort,
+    multi: wb.multi, event: wb.event, sort: wb.sort,
   });
   const d = await (await fetch("/api/orders?" + params)).json();
   if (!d.ok) { toast(d.error || "加载失败", true); return; }
@@ -1153,7 +1315,6 @@ async function renderWorkbench() {
     "<td>" + esc(r.subject || "—") + "</td>" +
     "<td>" + (r.event ? esc(r.event) + ' <span class="badge b-gray">' + esc(r.event_id) + "</span>" : "—") + "</td>" +
     "<td>" + (r.multi ? "<b>" + r.size + "</b>" : "1") + "</td>" +
-    "<td>" + (r.level ? riskBadge(r.level) : "—") + "</td>" +
     "<td>" + esc(r.time || "—") + "</td>" +
     "</tr>").join("");
 
@@ -1169,7 +1330,7 @@ async function renderWorkbench() {
   $("wb-next").disabled = d.page >= pages;
 }
 function clearWbFilter(key) {
-  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.level = ""; wb.event = ""; wb.q = ""; }
+  if (key === "all") { wb.area = ""; wb.subject = ""; wb.multi = ""; wb.event = ""; wb.q = ""; }
   else if (key === "q") wb.q = "";
   else wb[key] = "";
   wb.page = 1;
@@ -1179,7 +1340,7 @@ $("wb-q").addEventListener("input", () => {
   clearTimeout(wbTimer);
   wbTimer = setTimeout(() => { wb.q = $("wb-q").value.trim(); wb.page = 1; renderWorkbench(); }, 400);
 });
-[["wb-area", "area"], ["wb-subject", "subject"], ["wb-multi", "multi"], ["wb-level", "level"], ["wb-sort", "sort"]].forEach(pair => {
+[["wb-area", "area"], ["wb-subject", "subject"], ["wb-multi", "multi"], ["wb-sort", "sort"]].forEach(pair => {
   $(pair[0]).addEventListener("change", () => { wb[pair[1]] = $(pair[0]).value; wb.page = 1; renderWorkbench(); });
 });
 $("wb-prev").addEventListener("click", () => { if (wb.page > 1) { wb.page--; renderWorkbench(); } });
@@ -1203,7 +1364,6 @@ async function renderOrder(oid) {
     return;
   }
   const o = d.order, ai = d.ai, cl = d.cluster;
-  const needFill = '<span class="need-fill">待补充（数据源未提供该字段）</span>';
 
   // 判断依据 chips
   const basisHtml = (d.basis || []).map(b => {
@@ -1217,47 +1377,23 @@ async function renderOrder(oid) {
     '<button class="btn small" onclick="history.back()">← 返回</button>' +
     '<span class="od-id">' + esc(o.order_id) + "</span>" +
     (cl.is_multi ? '<span class="badge b-red">多频工单 · 共 ' + cl.frequency + " 条</span>" : '<span class="badge b-gray">非多频</span>') +
-    (cl.level ? riskBadge(cl.level) : "") +
+    (cl.event_id ? '<span class="badge b-blue">事件簇 ' + esc(cl.event_id) + "</span>" : "") +
+    (o.time ? '<span class="muted" style="font-size:12.5px">' + esc(o.time) + "</span>" : "") +
   "</div>" +
 
-  '<div class="od-grid">' +
-    '<div class="card"><h2>原始工单</h2>' +
-      '<div class="field-list">' +
-        field("工单编号", esc(o.order_id)) +
-        field("标题", o.title ? esc(o.title) : needFill) +
-        field("创建时间", o.time ? esc(o.time) : needFill) +
-        field("诉求人", needFill) +
-        field("联系方式", needFill) +
-        field("地址", needFill) +
-        field("所属区域", o.area_raw ? esc(o.area_raw) : needFill) +
-        field("承办部门", needFill) +
-      "</div>" +
-      '<div style="margin-top:14px" class="muted" style="font-size:12px">原始诉求内容</div>' +
-      '<div class="raw-content">' + esc(o.content) + "</div>" +
-    "</div>" +
-
-    '<div class="card"><h2>AI 结构化理解</h2>' +
-      '<div class="field-list">' +
-        field("主体", ai.subject ? esc(ai.subject) : needFill) +
-        field("地点", ai.area ? esc(ai.area) : needFill) +
-        field("事件", ai.event ? esc(ai.event) : needFill) +
-        field("所属事件簇", cl.event_id ? esc(cl.event_id) + "（" + esc(cl.event_type) + "）" : "—") +
-        field("建议关注部门", ai.department ? esc(ai.department) : "需人工研判") +
-        field("建议动作", ai.advice ? esc(ai.advice) + (ai.advice_source === "LLM" ? '<span class="ai-badge">AI 检索匹配</span>' : "") : "—") +
-      "</div>" +
-      '<div style="margin-top:14px" class="muted">标准化诉求文本</div>' +
-      '<div class="raw-content">' + esc(ai.normalized || o.content) + "</div>" +
-    "</div>" +
-  "</div>" +
-
-  '<div class="card" style="margin-bottom:18px"><h2>AI 重复关系与判断依据</h2>' +
+  '<div class="card" style="margin-bottom:18px"><h2>AI 多频归集结论</h2>' +
     (cl.is_multi
-      ? '<div class="conclusion">AI 判断：<b>高度疑似同一事件</b> —— 该事件共 ' + cl.frequency + " 条关联工单" +
-        (cl.level ? "，风险等级 " + esc(cl.level) : "") + "</div>" +
-        (basisHtml ? '<div class="basis-row">' + basisHtml + "</div>" : "")
+      ? '<div class="conclusion">AI 判断：<b>高度疑似同一事件</b> —— 该事件共 <b>' + cl.frequency + '</b> 条关联工单</div>'
       : '<div class="conclusion">该工单暂未发现重复关联。</div>') +
+    '<div class="field-list" style="margin-top:12px">' +
+      field("事件类型", cl.event_type ? esc(cl.event_type) : "—") +
+      field("主体", ai.subject ? esc(ai.subject) : "—") +
+      field("区域", ai.area ? esc(ai.area) : "—") +
+      field("所属事件簇", cl.event_id ? esc(cl.event_id) : "—") +
+    "</div>" +
+    (basisHtml ? '<div class="basis-row" style="margin-top:12px">' + basisHtml + "</div>" : "") +
     (d.similar && d.similar.length
-      ? '<div style="margin-top:12px"><div class="muted" style="font-size:12.5px;margin-bottom:6px">相似但非重复（AI 区分能力）</div>' +
+      ? '<div style="margin-top:12px"><div class="muted" style="font-size:12.5px;margin-bottom:6px">相似但非重复（同事件类型，不同主体/区域）</div>' +
         d.similar.map(s =>
           '<div class="basis-chip na" style="display:block;margin-bottom:6px;padding:8px 12px">' +
           esc(s.event_id) + " · " + esc(s.area) + " · " + s.frequency + " 条 —— " + esc(s.reason) + "</div>").join("") +
@@ -1265,22 +1401,60 @@ async function renderOrder(oid) {
       : "") +
   "</div>" +
 
-  '<div class="card"><h2>关联工单<span class="h-note">点击进入对应工单</span></h2>' +
-    (d.mates.length
-      ? '<div class="scroll-y"><table class="clickable"><thead><tr><th>工单号</th><th>诉求内容</th><th>区域</th><th>时间</th></tr></thead><tbody>' +
-        d.mates.map(m =>
-          '<tr onclick="goOrder(\'' + esc(m.order_id) + '\')">' +
-          "<td>" + esc(m.order_id) + "</td>" +
-          "<td>" + esc(m.content) + "</td>" +
-          "<td>" + esc(m.area || "—") + "</td>" +
-          "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
-        "</tbody></table></div>"
-      : '<div class="muted" style="padding:20px">无其他关联工单。</div>') +
+  '<div class="od-grid">' +
+    '<div class="card"><h2>原始诉求内容<span class="h-note">已脱敏</span></h2>' +
+      (o.title ? '<div style="margin-bottom:10px;font-size:14px;font-weight:600">' + esc(o.title) + "</div>" : "") +
+      '<div class="raw-content">' + esc(o.content) + "</div>" +
+    "</div>" +
+
+    '<div class="card"><h2>关联工单<span class="h-note">共 ' + d.mates.length + ' 条 · 点击跳转</span></h2>' +
+      (d.mates.length
+        ? '<div class="scroll-y"><table class="clickable"><thead><tr><th>工单号</th><th>诉求内容</th><th>区域</th><th>时间</th></tr></thead><tbody>' +
+          d.mates.map(m =>
+            '<tr onclick="goOrder(\'' + esc(m.order_id) + '\')">' +
+            "<td>" + esc(m.order_id) + "</td>" +
+            "<td>" + esc(m.content) + "</td>" +
+            "<td>" + esc(m.area || "—") + "</td>" +
+            "<td>" + esc(m.time || "—") + "</td></tr>").join("") +
+          "</tbody></table></div>"
+        : '<div class="muted" style="padding:20px">无其他关联工单。</div>') +
+    "</div>" +
   "</div>";
 }
 function field(k, v) {
   return '<div><div class="k">' + k + '</div><div class="v">' + v + "</div></div>";
 }
+
+/* ================= 飞书数据源管理 ================= */
+$("btn-add-feishu").addEventListener("click", () => {
+  $("feishu-add-form").classList.toggle("hidden");
+});
+$("btn-cancel-feishu").addEventListener("click", () => {
+  $("feishu-add-form").classList.add("hidden");
+  $("feishu-url-input").value = "";
+  $("feishu-name-input").value = "";
+});
+$("btn-save-feishu").addEventListener("click", async () => {
+  const url = $("feishu-url-input").value.trim();
+  const name = $("feishu-name-input").value.trim();
+  if (!url) { toast("请粘贴飞书表格链接", true); return; }
+  try {
+    const r = await (await fetch("/api/feishu_source", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, name: name || "飞书表格" }),
+    })).json();
+    if (!r.ok) { toast(r.error || "保存失败", true); return; }
+    toast("已保存飞书数据源");
+    $("feishu-add-form").classList.add("hidden");
+    $("feishu-url-input").value = "";
+    $("feishu-name-input").value = "";
+    await loadLocalFiles();
+    $("file-select").value = "feishu:" + r.source.id;
+    loadPreview({ feishu_url: r.source.url });
+  } catch (e) {
+    toast("保存失败：" + e, true);
+  }
+});
 
 /* ================= 启动 ================= */
 loadLocalFiles();

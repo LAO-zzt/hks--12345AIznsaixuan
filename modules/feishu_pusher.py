@@ -16,7 +16,7 @@ import config
 
 def push_top_events(events: list, webhook: str = None, top_n: int = 5):
     """
-    推送 Top-N 高关注事件到飞书群机器人。
+    推送 Top-N 多频事件到飞书群机器人。
 
     返回 (ok: bool, message: str)。
     """
@@ -24,37 +24,25 @@ def push_top_events(events: list, webhook: str = None, top_n: int = 5):
     if not webhook:
         return True, "未配置飞书 Webhook，已跳过推送。"
 
-    # 优先推送高关注事件，不足则按优先级分数补齐
-    ordered = sorted(
-        events,
-        key=lambda e: (0 if e.get("risk_level") == "高关注" else 1,
-                       -float(e.get("priority_score", 0) or 0)),
-    )
+    ordered = sorted(events, key=lambda e: -e["frequency"])
     top = ordered[:top_n]
     if not top:
-        return True, "暂无高频事件，无需推送。"
+        return True, "暂无多频事件，无需推送。"
 
-    lines = ["【12345 高频事件预警】系统识别到以下重点关注事件：", ""]
+    lines = ["【12345 多频工单识别】系统识别到以下 Top%d 多频事件：" % top_n, ""]
     for ev in top:
         lines.append(
             "▪ {eid} {subj}｜{etype}\n"
-            "  区域：{area}｜频次：{freq}（近7天 {d7}）｜趋势：{trend}\n"
-            "  风险等级：{level}（{score}分）\n"
-            "  风险原因：{reason}\n"
-            "  建议：{dept} → {action}\n"
+            "  区域：{area}｜频次：{freq}\n"
+            "  首次：{first}｜最近：{last}\n"
             "  样例工单：{samples}".format(
                 eid=ev["event_id"],
                 subj=ev["event_subject"],
                 etype=ev["event_type"],
                 area=ev["area"],
                 freq=ev["frequency"],
-                d7=ev.get("last_7d", 0),
-                trend=ev["trend"],
-                level=ev.get("risk_level", ""),
-                score=ev.get("priority_score", ""),
-                reason=ev.get("risk_reason", ""),
-                dept=ev.get("action_department", ""),
-                action=ev.get("action_advice", ""),
+                first=ev["first_seen"],
+                last=ev["last_seen"],
                 samples="、".join(s["order_id"] for s in ev.get("sample_orders", [])[:2]),
             )
         )
@@ -63,7 +51,7 @@ def push_top_events(events: list, webhook: str = None, top_n: int = 5):
     try:
         resp = requests.post(webhook, json=payload, timeout=8)
         if resp.status_code == 200:
-            return True, "已推送 Top%d 高关注事件到飞书。" % len(top)
+            return True, "已推送 Top%d 多频事件到飞书。" % len(top)
         return False, "飞书推送失败（HTTP %d），不影响结果展示与下载。" % resp.status_code
     except Exception as e:
         return False, "飞书推送失败（%s），不影响结果展示与下载。" % e

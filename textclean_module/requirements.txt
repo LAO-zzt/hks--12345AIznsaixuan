@@ -1,0 +1,8 @@
+# 12345 工单清洗与标准化模块 - 运行依赖
+# 安装：pip install -r requirements.txt
+flask>=2.3
+pandas>=1.5
+openpyxl>=3.0
+scikit-learn>=1.1
+numpy>=1.21
+pyyaml>=6.0

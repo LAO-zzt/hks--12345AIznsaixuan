@@ -1,0 +1,81 @@
+# 12345工单清洗模块配置文件
+# 复制此文件为 config.yaml 并根据实际情况修改
+
+# ============ LLM 配置 ============
+llm:
+  # 模式选择: ollama (本地) / openai (云端)
+  mode: openai
+  
+  # Ollama 本地配置
+  ollama:
+    api_url: http://localhost:11434/api/chat
+    model: qwen2.5:7b
+  
+  # OpenAI 兼容接口配置（支持各种国内大模型）
+  openai:
+    api_url: https://api.deepseek.com
+    api_key: "***REMOVED***"  # 填入你的 API Key
+    model: deepseek-v4-flash
+  
+  # 通用参数
+  temperature: 0.1
+  max_tokens: 500
+  timeout: 30  # 请求超时时间（秒）
+
+# ============ 高德地图配置 ============
+gaode:
+  # 高德地图 API Key（用于POI验证）
+  # 申请地址: https://console.amap.com/dev/key/app
+  api_key: "***REMOVED***"
+  
+  # POI缓存文件路径
+  cache_file: data/cache/shunde_poi_cache.json
+  
+  # 是否启用高德验证（false则只用LLM）
+  enabled: true
+
+# ============ 数据库配置 ============
+database:
+  # SQLite数据库路径（相对运行目录；server.py 会强制指向模块 data/ 目录）
+  db_path: data/cleaner.db
+  
+  # 批量处理大小
+  batch_size: 200
+
+# ============ 清洗参数配置 ============
+cleaning:
+  # 最低质量分数（低于此分数的工单标记为不可用）
+  min_quality_score: 0.4
+  
+  # 连续失败批次上限（达到后暂停任务）
+  max_consecutive_batch_failures: 3
+  
+  # 去重相似度阈值（0-1，越高越严格）
+  dedup_similarity_threshold: 0.85
+
+# ============ 数据源配置 ============
+source:
+  # 默认测试数据路径
+  default_excel: data/testdata/政数局资料-顺德区12345热线工单（2025年1月至3月）.xlsx
+  
+  # 上传文件保存目录
+  upload_dir: data/uploads
+
+# ============ Web服务配置 ============
+web:
+  # 服务端口
+  port: 5000
+  
+  # 是否开启调试模式
+  debug: false
+  
+  # 最大上传文件大小（MB）
+  max_upload_size_mb: 500
+
+# ============ 日志配置 ============
+logging:
+  # 日志级别: DEBUG / INFO / WARNING / ERROR
+  level: INFO
+  
+  # 日志文件路径（留空则只输出到控制台）
+  log_file: data/logs/cleaner.log

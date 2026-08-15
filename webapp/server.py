@@ -27,8 +27,7 @@ import config
 from modules import (
     loader, normalizer, entity_extractor,
     cluster as cluster_mod, classifier,
-    event_profiler, risk_analyzer, action_advisor,
-    exporter, feishu_pusher,
+    event_profiler, exporter, feishu_pusher, feishu_loader, llm_dedup,
 )
 from utils.helpers import truncate, load_area_coords
 
@@ -38,7 +37,7 @@ app = FastAPI(title="12345 高频事件智能预警与处置辅助系统 API")
 app.mount("/static", StaticFiles(directory=os.path.join(WEB_DIR, "static")), name="static")
 
 # 演示态：仅保留最近一次分析结果（单用户演示场景，不引入数据库）
-STATE = {"df": None, "events": None}
+STATE = {"df": None, "events": None, "source_meta": None}
 
 # 结果级缓存：相同 数据源+参数 组合直接命中，避免重复跑全量流水线
 RESULT_CACHE_DIR = os.path.join(config.OUTPUT_DIR, "cache")
@@ -98,6 +97,23 @@ def _fmt_time(ts) -> str:
         return ""
 
 
+# PII 脱敏：手机号 / 身份证 / 姓名称呼（市民姓名等敏感信息一律遮罩）
+import re as _re
+_PII_PHONE = _re.compile(r'1[3-9]\d{9}')
+_PII_IDCARD = _re.compile(r'\d{17}[\dXx]')
+_PII_NAME = _re.compile(r'([\u4e00-\u9fa5])(?:先生|女士|同志|小姐|同学)')
+
+def mask_pii(text) -> str:
+    """对文本中的手机号/身份证/姓名称呼做脱敏，返回安全字符串。"""
+    if not text:
+        return ""
+    s = str(text)
+    s = _PII_PHONE.sub(lambda m: m.group()[:3] + "****" + m.group()[-2:], s)
+    s = _PII_IDCARD.sub(lambda m: m.group()[:6] + "********" + m.group()[-4:], s)
+    s = _PII_NAME.sub(lambda m: m.group(1) + "*", s)
+    return s
+
+
 def _event_daily(df, cluster_id) -> list:
     """该事件按日工单数（供前端趋势图）。"""
     t = df.loc[df["cluster_id"] == cluster_id, "submit_time"].dropna()
@@ -123,17 +139,12 @@ def _event_areas(df, cluster_id) -> list:
 
 def _build_payload(df, events, info, warnings) -> dict:
     """把分析结果序列化为前端 JSON（超大数据按配置限量展示）。"""
-    high_count = sum(1 for e in events if e.get("risk_level") == "高关注")
     multi_total = int(df["is_multi_freq"].groupby(df["cluster_id"]).any().sum()) \
         if "is_multi_freq" in df.columns else len(events)
 
-    # 事件按文档口径排序：风险等级优先，同级按频次降序，限量展示 Top N
-    level_order = {"高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3}
+    # 事件按频次降序，限量展示 Top N
     max_events = getattr(config, "MAX_DISPLAY_EVENTS", 100)
-    ranked = sorted(
-        events,
-        key=lambda e: (level_order.get(e.get("risk_level", ""), 9),
-                       -int(e.get("frequency", 0))))
+    ranked = sorted(events, key=lambda e: -int(e.get("frequency", 0)))
     shown_events = ranked[:max_events]
 
     events_json = []
@@ -149,16 +160,7 @@ def _build_payload(df, events, info, warnings) -> dict:
             "first_seen": e["first_seen"],
             "last_seen": e["last_seen"],
             "trend": e["trend"],
-            "risk_level": e.get("risk_level", ""),
-            "priority_score": e.get("priority_score", 0),
-            "risk_reason": e.get("risk_reason", ""),
-            "breakdown": e.get("score_breakdown", {}),
-            "department": e.get("action_department", ""),
-            "advice": e.get("action_advice", ""),
-            "advice_source": e.get("advice_source", "rules"),
-            "monitor": e.get("monitor_required", ""),
-            "is_key": e.get("is_key_event", ""),
-            "samples": e.get("sample_orders", []),
+            "samples": [mask_pii(s) if isinstance(s, str) else s for s in e.get("sample_orders", [])],
             "daily": _event_daily(df, e["cluster_id"]),
             "areas": _event_areas(df, e["cluster_id"]),
         })
@@ -170,7 +172,7 @@ def _build_payload(df, events, info, warnings) -> dict:
     for r in order_df.itertuples(index=False):
         orders_json.append({
             "order_id": r.order_id,
-            "content": truncate(r.content, 60),
+            "content": mask_pii(truncate(r.content, 60)),
             "subject": r.extracted_subject,
             "event": r.extracted_event,
             "area": r.extracted_area,
@@ -180,7 +182,7 @@ def _build_payload(df, events, info, warnings) -> dict:
         })
 
     if len(ranked) > max_events:
-        warnings = warnings + ["事件总数 %d 个，看板按优先级展示 Top %d。" % (len(ranked), max_events)]
+        warnings = warnings + ["事件总数 %d 个，看板按频次展示 Top %d。" % (len(ranked), max_events)]
     if len(df) > max_orders:
         warnings = warnings + ["明细表展示多频优先的前 %d 条（共 %d 条），完整数据请下载结果文件。" % (max_orders, len(df))]
 
@@ -194,7 +196,6 @@ def _build_payload(df, events, info, warnings) -> dict:
         "kpis": {
             "total_orders": int(len(df)),
             "multi_events": multi_total,
-            "high_events": high_count,
             "biggest_event": _display_name(events[0]) if events else "—",
         },
         "method": info.get("method", ""),
@@ -230,7 +231,56 @@ def datafiles():
                 })
     except Exception:
         pass
-    return {"ok": True, "files": files}
+    return {"ok": True, "files": files, "feishu_sources": _load_feishu_sources()}
+
+
+FEISHU_SOURCES_PATH = os.path.join(config.OUTPUT_DIR, "feishu_sources.json")
+
+
+def _load_feishu_sources():
+    try:
+        import json as _json
+        with open(FEISHU_SOURCES_PATH, encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception:
+        return []
+
+
+def _save_feishu_sources(sources):
+    import json as _json
+    os.makedirs(os.path.dirname(FEISHU_SOURCES_PATH), exist_ok=True)
+    with open(FEISHU_SOURCES_PATH, "w", encoding="utf-8") as f:
+        _json.dump(sources, f, ensure_ascii=False, indent=2)
+
+
+@app.post("/api/feishu_source")
+async def add_feishu_source(body: dict):
+    """保存一个飞书在线表格数据源。"""
+    url = (body.get("url") or "").strip()
+    name = (body.get("name") or "").strip()
+    if not url:
+        return {"ok": False, "error": "链接不能为空"}
+    if not name:
+        name = "飞书表格"
+    sources = _load_feishu_sources()
+    src_id = "fs_" + str(abs(hash(url)))[-8:]
+    for s in sources:
+        if s["url"] == url:
+            s["name"] = name
+            _save_feishu_sources(sources)
+            return {"ok": True, "source": s}
+    src = {"id": src_id, "name": name, "url": url}
+    sources.append(src)
+    _save_feishu_sources(sources)
+    return {"ok": True, "source": src}
+
+
+@app.delete("/api/feishu_source/{src_id}")
+def del_feishu_source(src_id: str):
+    sources = _load_feishu_sources()
+    sources = [s for s in sources if s["id"] != src_id]
+    _save_feishu_sources(sources)
+    return {"ok": True}
 
 
 def _read_upload(filename: str, content: bytes) -> pd.DataFrame:
@@ -253,7 +303,7 @@ def _read_upload(filename: str, content: bytes) -> pd.DataFrame:
 
 
 @app.post("/api/preview")
-async def preview(file: UploadFile = File(None), datafile: str = Form("")):
+async def preview(file: UploadFile = File(None), datafile: str = Form(""), feishu_url: str = Form("")):
     """数据加载确认：真实读取条数/时间范围/区域数，供第一屏展示（禁止写死）。"""
     try:
         if file is not None and getattr(file, "filename", ""):
@@ -261,6 +311,9 @@ async def preview(file: UploadFile = File(None), datafile: str = Form("")):
             if not content.strip():
                 return {"ok": False, "error": "上传的文件为空。"}
             df = loader.load_orders(_read_upload(file.filename, content))
+        elif feishu_url:
+            df_raw, meta = feishu_loader.fetch_records(feishu_url)
+            df = loader.load_orders(df_raw)
         else:
             name = os.path.basename(datafile) if datafile else "sample.csv"
             path = os.path.join(config.INPUT_DIR, name)
@@ -290,6 +343,7 @@ async def preview(file: UploadFile = File(None), datafile: str = Form("")):
 async def analyze(
     file: UploadFile = File(None),
     datafile: str = Form(""),
+    feishu_url: str = Form(""),
     scope: str = Form("all"),
     freq_threshold: int = Form(config.FREQ_THRESHOLD),
     eps: float = Form(config.CLUSTER_EPS),
@@ -298,12 +352,13 @@ async def analyze(
     use_llm: bool = Form(False),
     llm_key: str = Form(""),
 ):
-    """执行全链路分析：加载→标准化→实体→聚类→多频→画像→风险→建议。"""
+    """执行全链路分析：加载→标准化→实体→聚类→多频→画像。"""
     warnings = []
     try:
-        # ---- 数据源：上传文件 > data/input 本地文件 > 内置样例 ----
+        # ---- 数据源：上传文件 > 飞书表格 > data/input 本地文件 > 内置样例 ----
         df = None
         cache_seed = None
+        STATE["source_meta"] = None
         if file is not None and getattr(file, "filename", ""):
             content = await file.read()
             if not content.strip():
@@ -312,6 +367,16 @@ async def analyze(
                 df_raw = _read_upload(file.filename, content)
             except Exception as e:
                 return {"ok": False, "error": "文件读取失败：%s。请确认为有效 CSV/Excel。" % e}
+            df = loader.load_orders(df_raw)
+        elif feishu_url:
+            try:
+                df_raw, meta = feishu_loader.fetch_records(feishu_url)
+            except Exception as e:
+                return {"ok": False, "error": "飞书数据拉取失败：%s" % e}
+            STATE["source_meta"] = meta
+            cache_seed = "feishu|%s|%s|%d" % (meta["app_token"], meta["table_id"], meta["rows"])
+            warnings.append("已从飞书多维表格加载 %d 条工单（%d 个字段）。"
+                            % (meta["rows"], len(meta["fields"])))
             df = loader.load_orders(df_raw)
         elif datafile:
             # 防路径穿越：只允许 data/input 下的文件名
@@ -365,52 +430,17 @@ async def analyze(
         df, info = cluster_mod.cluster_orders(
             df, eps=eps, min_samples=min_samples, use_embedding=use_embedding)
         warnings.extend(info.get("messages", []))
+
+        if use_llm:
+            df, llm_info = llm_dedup.merge_clusters_by_llm(df, llm_key=llm_key)
+            warnings.extend(llm_info.get("messages", []))
+
         df, _ = classifier.classify_multi_freq(df, freq_threshold=freq_threshold)
 
         try:
             events = event_profiler.build_event_profiles(df)
         except Exception as e:
             events, warnings = [], warnings + ["事件画像生成失败：%s" % e]
-        try:
-            events = risk_analyzer.analyze_risks(events, df)
-        except Exception as e:
-            warnings.append("风险分析失败：%s" % e)
-        try:
-            events = action_advisor.advise_actions(events)
-        except Exception as e:
-            warnings.append("处置建议生成失败：%s" % e)
-
-        # ---- LLM 建议增强：规则词典未命中的事件交给 DeepSeek 兜底 ----
-        if use_llm and events:
-            from modules import llm_advisor
-            api_key = ((llm_key or "").strip()
-                       or os.environ.get("DEEPSEEK_API_KEY", "")
-                       or _load_local_secret("deepseek_api_key"))
-            if not api_key:
-                warnings.append("已开启 LLM 建议增强，但未检测到 DeepSeek API Key"
-                                "（页面参数区粘贴或设环境变量 DEEPSEEK_API_KEY），本次用规则词典结果。")
-            else:
-                unmatched = [e for e in events
-                             if e.get("action_department") == "需人工研判"][:60]
-                llm_map = {}
-                if unmatched:
-                    try:
-                        llm_map = llm_advisor.llm_advise(unmatched, api_key)
-                    except Exception:
-                        llm_map = {}
-                hit = 0
-                for e in events:
-                    if e.get("action_department") == "需人工研判":
-                        r = llm_map.get(e.get("event_type", ""))
-                        if r:
-                            e["action_department"] = r["department"]
-                            e["action_advice"] = r["advice"]
-                            e["advice_source"] = "LLM"
-                            hit += 1
-                if hit:
-                    warnings.append("DeepSeek 已为 %d 个事件完成处置建议匹配（详情中标注“AI 检索匹配”）。" % hit)
-                if len(unmatched) > hit:
-                    warnings.append("仍有 %d 个事件未匹配到处置建议，保持“需人工研判”。" % (len(unmatched) - hit))
 
         STATE["df"], STATE["events"] = df, events
         if cache_key:
@@ -458,8 +488,6 @@ async def feishu(body: dict):
 
 # ============================ 三页业务结构：总览 / 工作台 / 详情 ============================
 
-_LEVEL_RANK = {"高关注": 0, "中关注": 1, "一般": 2, "需人工研判": 3, "": 9}
-
 
 def _cluster_event_map():
     """cluster_id -> 事件字典。"""
@@ -491,12 +519,10 @@ def overview():
     if df is None:
         return {"ok": False, "error": "暂无分析结果。"}
     cmap = _cluster_event_map()
-    high_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == "高关注")
 
     multi_mask = df.get("is_multi_freq", pd.Series([False] * len(df), index=df.index)).astype(bool)
-    high_mask = df["cluster_id"].isin(high_clusters) if "cluster_id" in df.columns else multi_mask.iloc[0:0]
 
-    # 区域聚合（带坐标，供首页地图四档切换）
+    # 区域聚合（带坐标，供首页地图切换）
     from utils.helpers import load_area_coords
     coords = load_area_coords()
     areas_col = df.get("extracted_area", pd.Series([""] * len(df), index=df.index)).astype(str).str.strip()
@@ -506,11 +532,26 @@ def overview():
             continue
         lat, lon = coords[area]
         a_mask = areas_col == area
+        a_multi = df.loc[a_mask & multi_mask]
+        top_events = []
+        if not a_multi.empty and "cluster_id" in a_multi.columns:
+            for cid, g in a_multi.groupby("cluster_id"):
+                ev = cmap.get(cid)
+                if not ev:
+                    continue
+                top_events.append({
+                    "event_id": ev["event_id"],
+                    "name": (ev["event_subject"] if not ev["event_subject"].startswith(("（", "多主体聚合"))
+                             else "") + (" · " if not ev["event_subject"].startswith(("（", "多主体聚合")) else "") + ev["event_type"],
+                    "frequency": int(len(g)),
+                })
+            top_events.sort(key=lambda x: x["frequency"], reverse=True)
+            top_events = top_events[:5]
         area_rows.append({
             "area": area, "lat": lat, "lon": lon,
             "total": int(cnt),
             "multi": int(multi_mask[a_mask].sum()),
-            "high": int((high_mask & a_mask).sum()),
+            "top_events": top_events,
         })
 
     # 全局日趋势
@@ -520,10 +561,15 @@ def overview():
         daily = t.dt.date.value_counts().sort_index()
         daily_all = [{"date": str(k), "count": int(v)} for k, v in daily.items()]
 
-    # 高频主体（全部工单统计，前30）
-    subj_col = df.get("extracted_subject", pd.Series([""] * len(df), index=df.index)).astype(str).str.strip()
-    subj_vc = subj_col[subj_col != ""].value_counts().head(30)
-    top_subjects = [{"subject": k, "count": int(v)} for k, v in subj_vc.items()]
+    # 分区域日趋势（供前端按区域筛选切换趋势图）
+    daily_by_area = {}
+    for area in set(a["area"] for a in area_rows):
+        a_mask = areas_col == area
+        ta = df.loc[a_mask, "submit_time"].dropna()
+        if ta.empty:
+            continue
+        d = ta.dt.date.value_counts().sort_index()
+        daily_by_area[area] = [{"date": str(k), "count": int(v)} for k, v in d.items()]
 
     return {
         "ok": True,
@@ -531,17 +577,32 @@ def overview():
             "rows": int(len(df)),
             "time_min": t.min().strftime("%Y-%m-%d") if not t.empty else None,
             "time_max": t.max().strftime("%Y-%m-%d") if not t.empty else None,
+            "meta": STATE.get("source_meta"),
         },
         "areas": area_rows,
         "daily_all": daily_all,
+        "daily_by_area": daily_by_area,
         "multi_orders": int(multi_mask.sum()),
-        "top_subjects": top_subjects,
+        "subjects": _top_subjects(df, 30),
+        "top_subjects": _top_subjects(df, 30),
     }
+
+
+def _top_subjects(df, top_n=30):
+    """全部工单中识别到的高频主体（如某广场、某派出所、某街道办等）。"""
+    if "extracted_subject" not in df.columns:
+        return []
+    s = df["extracted_subject"].astype(str).str.strip()
+    s = s[(s != "") & (s != "nan") & (~s.str.startswith("多主体聚合"))]
+    if s.empty:
+        return []
+    vc = s.value_counts().head(top_n)
+    return [{"subject": str(k), "count": int(v)} for k, v in vc.items()]
 
 
 @app.get("/api/orders")
 def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
-           subject: str = "", multi: str = "", level: str = "",
+           subject: str = "", multi: str = "",
            event: str = "", sort: str = "default"):
     """工单工作台：全量工单搜索 / 筛选 / 排序 / 分页（服务端处理，支撑十万级数据）。"""
     df = STATE["df"]
@@ -563,23 +624,15 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
         view = view[view.get("extracted_subject", pd.Series(index=view.index)).astype(str) == subject]
     if multi in ("1", "0"):
         view = view[view["is_multi_freq"].astype(bool) == (multi == "1")]
-    if level:
-        lv_clusters = set(cid for cid, e in cmap.items() if e.get("risk_level") == level)
-        view = view[view["cluster_id"].isin(lv_clusters)]
     if event:
         ev = next((e for e in (STATE["events"] or []) if e["event_id"] == event), None)
         view = view[view["cluster_id"] == ev["cluster_id"]] if ev else view.iloc[0:0]
 
-    # 排序（默认：高优先优先；时间倒序兜底）
-    lv_of = view["cluster_id"].map(lambda c: _LEVEL_RANK.get(cmap.get(c, {}).get("risk_level", ""), 9))
-    if sort == "freq":
-        view = view.assign(_a=lv_of, _b=view["cluster_size"]).sort_values(
-            ["_a", "_b"], ascending=[True, False])
-    elif sort == "time":
+    # 排序（默认：多频优先 + 频次降序）
+    if sort == "time":
         view = view.sort_values("submit_time", ascending=False, na_position="last")
     else:
-        view = view.assign(_a=lv_of, _b=view["cluster_size"]).sort_values(
-            ["_a", "_b"], ascending=[True, False])
+        view = view.assign(_b=view["cluster_size"]).sort_values("_b", ascending=False)
 
     total = int(len(view))
     page = max(1, page)
@@ -593,14 +646,13 @@ def orders(page: int = 1, size: int = 50, q: str = "", area: str = "",
         rows.append({
             "order_id": oid,
             "title": str(getattr(r, "title", "") or "")[:60],
-            "content": truncate(r.content, 60),
+            "content": mask_pii(truncate(r.content, 60)),
             "area": str(getattr(r, "extracted_area", "") or ""),
             "subject": str(getattr(r, "extracted_subject", "") or ""),
             "event": ev.get("event_type", "") if ev else "",
             "event_id": ev.get("event_id", "") if ev else "",
             "size": int(r.cluster_size),
             "multi": bool(r.is_multi_freq),
-            "level": ev.get("risk_level", "") if ev else "",
             "time": _fmt_time(r.submit_time),
         })
     return {"ok": True, "total": total, "page": page, "size": size, "rows": rows}
@@ -627,7 +679,7 @@ def order_detail(oid: str):
         for m in same.itertuples(index=False):
             mates.append({
                 "order_id": str(m.order_id),
-                "content": truncate(m.content, 70),
+                "content": mask_pii(truncate(m.content, 70)),
                 "area": str(getattr(m, "extracted_area", "") or ""),
                 "time": _fmt_time(m.submit_time),
             })
@@ -669,7 +721,7 @@ def order_detail(oid: str):
         "order": {
             "order_id": oid,
             "title": str(getattr(r, "title", "") or ""),
-            "content": str(r.content),
+            "content": mask_pii(str(r.content)),
             "subject_raw": str(getattr(r, "subject", "") or ""),
             "area_raw": str(getattr(r, "area", "") or ""),
             "time": _fmt_time(r.submit_time),
@@ -678,16 +730,12 @@ def order_detail(oid: str):
             "subject": str(getattr(r, "extracted_subject", "") or ""),
             "event": str(getattr(r, "extracted_event", "") or ""),
             "area": str(getattr(r, "extracted_area", "") or ""),
-            "normalized": str(getattr(r, "normalized_content", "") or ""),
-            "department": ev.get("department", "") if ev else "",
-            "advice": ev.get("advice", "") if ev else "",
-            "advice_source": ev.get("advice_source", "rules") if ev else "rules",
+            "normalized": mask_pii(str(getattr(r, "normalized_content", "") or "")),
         },
         "cluster": {
             "event_id": ev.get("event_id", "") if ev else "",
             "event_type": ev.get("event_type", "") if ev else "",
             "frequency": ev.get("frequency", int(r.cluster_size)) if ev else int(r.cluster_size),
-            "level": ev.get("risk_level", "") if ev else "",
             "is_multi": bool(r.is_multi_freq),
         },
         "mates": mates,

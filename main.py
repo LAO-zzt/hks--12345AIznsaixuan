@@ -17,31 +17,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pandas as pd
 import streamlit as st
-import plotly.express as px
 
 import config
 from modules import (
     loader, normalizer, entity_extractor,
     cluster as cluster_mod, classifier,
-    event_profiler, risk_analyzer, action_advisor,
-    exporter, feishu_pusher,
+    event_profiler, exporter, feishu_pusher,
 )
-from utils.helpers import ensure_dirs, truncate, load_area_coords
+from utils.helpers import ensure_dirs, truncate
 
 st.set_page_config(
-    page_title="12345 高频事件智能预警与处置辅助系统",
+    page_title="12345 多频工单识别",
     page_icon="📊",
     layout="wide",
 )
 ensure_dirs()
-
-# 风险等级 -> 颜色标记（用于表格高亮）
-LEVEL_COLOR = {
-    "高关注": "#fde2e2",
-    "中关注": "#fff3d6",
-    "一般": "#e8f4ea",
-    "需人工研判": "#eeeeee",
-}
 
 
 # ============================ 流水线 ============================
@@ -93,181 +83,56 @@ def run_pipeline(df_raw: pd.DataFrame, params: dict) -> dict:
         events = []
         result["warnings"].append("事件画像生成失败：%s" % e)
 
-    # 7) 风险分析
-    result["stage"] = "风险分析"
-    try:
-        events = risk_analyzer.analyze_risks(events, df)
-    except Exception as e:
-        result["warnings"].append("风险分析失败：%s" % e)
-
-    # 8) 处置建议
-    result["stage"] = "处置建议"
-    try:
-        events = action_advisor.advise_actions(events)
-    except Exception as e:
-        result["warnings"].append("处置建议生成失败：%s" % e)
-
     result.update({"df": df, "events": events})
     return result
 
 
 # ============================ 渲染辅助 ============================
 
-def style_level_column(df_view: pd.DataFrame, col: str):
-    """给风险等级列加背景色，帮助评委 10 秒定位重点。"""
-    def _apply(v):
-        color = LEVEL_COLOR.get(v, "")
-        return "background-color: %s" % color if color else ""
-    try:
-        return df_view.style.map(_apply, subset=[col])
-    except Exception:
-        return df_view
-
-
 def render_kpis(res: dict):
-    """顶部四个关键指标。"""
+    """顶部关键指标。"""
     df, events = res["df"], res["events"]
-    high = [e for e in events if e.get("risk_level") == "高关注"]
     biggest = events[0]["event_subject"] if events else "—"
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     c1.metric("工单总量", len(df))
     c2.metric("多频事件数", len(events))
-    c3.metric("高关注事件数", len(high))
-    c4.metric("最大频次事件", truncate(biggest, 14))
+    c3.metric("最大频次事件", truncate(biggest, 14))
 
 
 def render_event_board(res: dict):
-    """高频事件看板：事件名称 / 区域 / 频次 / 趋势 / 风险等级 / 优先级。"""
+    """多频事件看板：事件名称 / 区域 / 频次 / 首末出现。"""
     events = res["events"]
-
-    def _fmt_score(v):
-        return "%.1f" % v if isinstance(v, (int, float)) else v
-
     board = pd.DataFrame([{
         "事件编号": e["event_id"],
         "事件名称": "%s · %s" % (e["event_subject"], e["event_type"]),
         "区域": e["area"],
         "频次": e["frequency"],
-        "近7天": e.get("last_7d", 0),
-        "趋势": e["trend"],
-        "风险等级": e.get("risk_level", ""),
-        "优先级分数": _fmt_score(e.get("priority_score", "")),
-        "建议关注部门": e.get("action_department", ""),
+        "首次出现": e["first_seen"],
+        "最近出现": e["last_seen"],
     } for e in events])
-    st.dataframe(style_level_column(board, "风险等级"), width="stretch", hide_index=True)
+    st.dataframe(board, width="stretch", hide_index=True)
 
 
 def render_event_detail(res: dict):
-    """事件详情：画像 + 趋势图 + 区域分布 + 典型工单 + 风险原因 + 处置建议。"""
+    """事件详情：画像 + 典型工单。"""
     events = res["events"]
     df = res["df"]
     options = {("%s %s·%s（%s次）" % (
         e["event_id"], e["event_subject"], e["event_type"], e["frequency"])): e for e in events}
     chosen_label = st.selectbox("选择要查看的事件", list(options.keys()))
     ev = options[chosen_label]
-    g = df[df["cluster_id"] == ev["cluster_id"]].copy()
 
-    # ---- 画像与结论 ----
-    left, right = st.columns([1, 1])
-    with left:
-        st.markdown("#### 事件画像")
-        st.markdown(
-            "**主体**：%s  \n**类型**：%s  \n**区域**：%s  \n"
-            "**频次**：%s（近24小时 %s，近7天 %s）  \n"
-            "**首次出现**：%s  \n**最近出现**：%s" % (
-                ev["event_subject"], ev["event_type"], ev["area"],
-                ev["frequency"], ev.get("last_24h", 0), ev.get("last_7d", 0),
-                ev["first_seen"], ev["last_seen"],
-            )
+    st.markdown("#### 事件画像")
+    st.markdown(
+        "**主体**：%s  \n**类型**：%s  \n**区域**：%s  \n"
+        "**频次**：%s  \n"
+        "**首次出现**：%s  \n**最近出现**：%s" % (
+            ev["event_subject"], ev["event_type"], ev["area"],
+            ev["frequency"], ev["first_seen"], ev["last_seen"],
         )
-        score = ev.get("priority_score", "—")
-        score_text = "%.1f" % score if isinstance(score, (int, float)) else score
-        st.markdown("**风险等级**：%s（优先级分数 %s）" % (
-            ev.get("risk_level", "—"), score_text))
-        st.info("风险原因：%s" % ev.get("risk_reason", "暂无"))
-        st.success("处置建议：%s → %s（持续监控：%s）" % (
-            ev.get("action_department", "—"),
-            ev.get("action_advice", "—"),
-            ev.get("monitor_required", "—"),
-        ))
-        if ev.get("score_breakdown"):
-            bd = ev["score_breakdown"]
-            st.caption("评分构成（可解释）：" + "｜".join(
-                "%s %.2f" % (k, v) for k, v in bd.items()))
+    )
 
-    # ---- 时间趋势（横向条形，日期平铺） ----
-    with right:
-        st.markdown("#### 时间趋势")
-        t = g["submit_time"].dropna()
-        if t.empty:
-            st.caption("该事件缺少有效时间字段，趋势图不可用。")
-        else:
-            daily = t.dt.date.value_counts().sort_index().reset_index()
-            daily.columns = ["日期", "工单数"]
-            daily["日期"] = daily["日期"].astype(str)
-            fig = px.bar(
-                daily, x="工单数", y="日期", orientation="h",
-                color_discrete_sequence=["#4c78a8"],
-                text="工单数",
-            )
-            fig.update_layout(
-                xaxis=dict(title="工单数", dtick=1),
-                # 日期按时间升序自下而上，趋势一眼可读
-                yaxis=dict(automargin=True, categoryorder="category ascending"),
-                margin=dict(t=12, b=12, l=12, r=24),
-                height=max(200, 48 * len(daily) + 100),
-            )
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-    # ---- 区域分布（地图气泡） ----
-    st.markdown("#### 区域分布")
-    areas = g["extracted_area"].replace("", None).dropna()
-    if areas.empty:
-        st.caption("该事件缺少区域信息。")
-    else:
-        area_dist = areas.value_counts().reset_index()
-        area_dist.columns = ["区域", "工单数"]
-        coords = load_area_coords()
-        area_dist["纬度"] = area_dist["区域"].map(lambda a: coords.get(a, (None, None))[0])
-        area_dist["经度"] = area_dist["区域"].map(lambda a: coords.get(a, (None, None))[1])
-        known = area_dist.dropna(subset=["纬度", "经度"])
-
-        if known.empty:
-            # 坐标词典未覆盖 → 降级横向条形图，保证始终有结果
-            st.caption("当前区域暂无坐标数据，降级为条形图展示。")
-            fig = px.bar(
-                area_dist, x="工单数", y="区域", orientation="h",
-                color_discrete_sequence=["#4c78a8"], text="工单数",
-            )
-            fig.update_layout(
-                xaxis=dict(title="工单数", dtick=1),
-                yaxis=dict(automargin=True, categoryorder="total ascending"),
-                margin=dict(t=12, b=12, l=12, r=24),
-                height=max(180, 56 * len(area_dist) + 90),
-            )
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-        else:
-            fig = px.scatter_map(
-                known, lat="纬度", lon="经度",
-                size="工单数", hover_name="区域",
-                hover_data={"纬度": False, "经度": False, "工单数": True},
-                color_discrete_sequence=["#e74c3c"],
-                size_max=32, zoom=11,
-                center=dict(lat=float(known["纬度"].mean()),
-                            lon=float(known["经度"].mean())),
-                map_style="open-street-map",
-            )
-            fig.update_layout(
-                margin=dict(t=12, b=12, l=12, r=12),
-                height=420,
-            )
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-            uncovered = area_dist[~area_dist["区域"].isin(known["区域"])]
-            if not uncovered.empty:
-                st.caption("坐标词典未覆盖区域（未上图）：" + "、".join(uncovered["区域"]))
-
-    # ---- 典型工单 ----
     st.markdown("#### 典型工单")
     samples = pd.DataFrame(ev.get("sample_orders", []))
     if samples.empty:
@@ -313,13 +178,6 @@ def render_config_page():
     min_samples = c3.slider("最少样本 CLUSTER_MIN_SAMPLES", 2, 10, config.CLUSTER_MIN_SAMPLES)
     use_embedding = st.checkbox(
         "启用本地 Embedding（可选，模型缺失自动回退 TF-IDF）", value=config.USE_EMBEDDING)
-
-    with st.expander("高级参数（开发调试用，默认隐藏）"):
-        st.write("风险权重：频次 %.2f / 趋势 %.2f / 集中度 %.2f / 敏感度 %.2f" % (
-            config.RISK_WEIGHT_FREQUENCY, config.RISK_WEIGHT_TREND,
-            config.RISK_WEIGHT_AREA, config.RISK_WEIGHT_SENSITIVITY))
-        st.write("趋势窗口：近 %d 天 vs 基线 %d 天" % (
-            config.TREND_RECENT_DAYS, config.TREND_BASELINE_DAYS))
 
     st.divider()
     st.subheader("第三步 · 飞书推送（可选）")
