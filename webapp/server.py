@@ -79,23 +79,32 @@ def _run_textclean(df):
         v = str(v).strip()
         return v if v and v != "nan" else ""
 
-    def _pick_subject(tc_result, raw_subj):
-        """优先 textclean 结果，其次清洗原始 subject（社区优先覆盖），最后原样兜底。"""
+    def _pick_subject(tc_result, title, raw_subj):
+        """方案A：textclean结果（标题优先已在pipeline中实现）→ 标题正则 → 原始字段 → 兜底。"""
+        # textclean已在pipeline中按"标题→community→地址→全文"优先级提取
         if tc_result and tc_result.organization_normalized:
             return tc_result.organization_normalized
-        cleaned, _, _ = extract_organization(_nz(raw_subj))
-        if cleaned:
-            return cleaned
-        return _nz(raw_subj)
+        # 方案A兜底：直接从标题提取
+        if title:
+            cleaned, _, _ = extract_organization(str(title))
+            if cleaned:
+                return cleaned
+        # 原始字段清洗
+        if raw_subj:
+            cleaned, _, _ = extract_organization(_nz(raw_subj))
+            if cleaned:
+                return cleaned
+        return ""
 
     df = df.copy()
     contents = df["content"].astype(str).tolist()
+    titles = df["title"].astype(str).tolist() if "title" in df else [""] * len(df)
     subjects = df["subject"].astype(str).tolist() if "subject" in df else [""] * len(df)
     areas = df["area"].astype(str).tolist() if "area" in df else [""] * len(df)
     df["normalized_content"] = [
         (t.semantic_content or t.clean_content or c) for t, c in zip(cleaned, contents)]
     df["extracted_subject"] = [
-        _pick_subject(t, raw) for t, raw in zip(cleaned, subjects)]
+        _pick_subject(t, title, raw) for t, title, raw in zip(cleaned, titles, subjects)]
     df["extracted_event"] = [t.event_type or "" for t in cleaned]
     df["extracted_area"] = [(t.town or _nz(raw)) for t, raw in zip(cleaned, areas)]
     df["addr_norm"] = [t.address_normalized or "" for t in cleaned]

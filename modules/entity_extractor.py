@@ -79,6 +79,29 @@ def _extract_subject_from_text(text: str) -> str:
     return ""
 
 
+def _extract_subject_pipeline(title: str, content: str, raw_subject: str = "") -> str:
+    """完整的主体提取管线：标题优先 → 原始字段 → 内容兜底。
+
+    方案A：标题是人工编写，主体密度最高，优先从标题提取。
+    方案B：原始subject字段（如果有）作为第二优先级。
+    兜底：从内容中提取。
+    """
+    # 方案A：标题优先
+    if title:
+        subj = _extract_subject_from_text(title)
+        if subj:
+            return subj
+
+    # 方案B：原始subject字段清洗后使用
+    if raw_subject:
+        subj = _extract_subject_from_text(raw_subject)
+        if subj:
+            return subj
+
+    # 兜底：从内容提取
+    return _extract_subject_from_text(content)
+
+
 def _area_patterns():
     """加载区域词典并编译联合正则（长词优先，缓存结果）。"""
     global _AREA_TERMS, _AREA_DICT_RE
@@ -147,11 +170,19 @@ def extract_entities(df):
     content = df.get("normalized_content", df.get("content", pd.Series([""] * len(df), index=df.index))).fillna("").astype(str)
     title = df.get("normalized_title", df.get("title", pd.Series([""] * len(df), index=df.index))).fillna("").astype(str)
 
-    # ---- 主体：原始字段清洗 → 内容提取（社区优先） ----
+    # ---- 主体：标题优先 → 原始字段 → 内容兜底 ----
     raw_subject = df.get("subject", pd.Series([""] * len(df), index=df.index)).fillna("").astype(str).str.strip()
-    raw_subject_clean = raw_subject.apply(_extract_subject_from_text)
-    subj_from_text = content.apply(_extract_subject_from_text)
-    df["extracted_subject"] = raw_subject_clean.where(raw_subject_clean != "", subj_from_text)
+    # 方案A：从标题提取主体
+    subj_from_title = title.apply(_extract_subject_from_text)
+    # 方案B：原始subject字段清洗后使用
+    subj_from_raw = raw_subject.apply(_extract_subject_from_text)
+    # 兜底：从内容提取
+    subj_from_content = content.apply(_extract_subject_from_text)
+
+    df["extracted_subject"] = subj_from_title.where(
+        subj_from_title != "",
+        subj_from_raw.where(subj_from_raw != "", subj_from_content)
+    )
 
     # ---- 事件：词典匹配（标题优先，其次内容） ----
     ev_from_title = _match_event_vec(title, event_terms)

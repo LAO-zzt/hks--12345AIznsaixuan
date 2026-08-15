@@ -120,31 +120,34 @@ class CleaningPipeline:
         logger.info(f"  [地址] 区: {t.district or '无'}, 镇街: {t.town or '无'}, 社区: {t.community or '无'}, 道路: {t.road or '无'}, 建筑: {t.building or '无'}")
         logger.info(f"  [地址] 原始: {t.address_raw[:50] if t.address_raw else '无'}...")
 
-        # ---- 主体抽取（从地址中寻找主体，高德验证） ----
-        # 策略：地址中通常包含主体，如"大良街道XX小区"中的小区
+        # ---- 主体抽取（标题优先 + 地址community + 全文兜底） ----
+        # 真实数据无结构化subject字段，需从非结构化文本提取
         org_raw = ""
         org_type = ""
         org_conf = 0.0
-        
-        # 1. 从地址的community字段提取（小区/社区通常是主体）
-        if addr["community"]:
+        from ticket_cleaner.extractors import extract_organization
+
+        # 方案A：1. 从标题提取主体（标题是人工编写，主体密度最高）
+        if record.title:
+            org_raw, org_type, org_conf = extract_organization(record.title)
+            if org_raw:
+                logger.debug(f"  [主体] 从标题提取: {org_raw} (类型: {org_type})")
+
+        # 方案B：2. 从地址community提取（地址解析最可靠）
+        if not org_raw and addr["community"]:
             org_raw = addr["community"]
             org_type = "小区"
-            org_conf = 0.8
+            org_conf = 0.85
             logger.debug(f"  [主体] 从地址community提取: {org_raw}")
 
-        # 2. 从地址原文中提取主体（使用规则，仅匹配有机构/小区后缀的名称）
-        # 注意：不再把门牌号(building)当作主体——"50号""3栋"不是有效主体，
-        # 否则会导致 22% 的主体变成门牌/地址噪声。
-        elif addr["address_raw"]:
-            from ticket_cleaner.extractors import extract_organization
+        # 3. 从地址原文提取主体
+        if not org_raw and addr["address_raw"]:
             org_raw, org_type, org_conf = extract_organization(addr["address_raw"])
             if org_raw:
                 logger.debug(f"  [主体] 从地址原文提取: {org_raw}")
 
-        # 3. 如果地址中没找到，从全文提取
+        # 4. 如果地址中没找到，从全文提取
         if not org_raw:
-            from ticket_cleaner.extractors import extract_organization
             org_raw, org_type, org_conf = extract_organization(record.content)
             if org_raw:
                 logger.debug(f"  [主体] 从全文提取: {org_raw}")
