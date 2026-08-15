@@ -273,10 +273,15 @@ def _restore_latest_cache():
                      if f.startswith("result_") and f.endswith(".pkl")]
             if not files:
                 return False
-            # 坏缓存会被 _load_result_cache 自愈删除；优先恢复数据量最大的缓存（开发模式主数据集），同大小取较新
-            files.sort(key=lambda f: (os.path.getsize(os.path.join(RESULT_CACHE_DIR, f)),
-                                      os.path.getmtime(os.path.join(RESULT_CACHE_DIR, f))), reverse=True)
-            for name in files:
+            # 坏缓存会被 _load_result_cache 自愈删除；跳过玩具数据集（<1000条），
+            # 其余按 mtime 取最新（最新一次全量分析结果，与算法版本一致）
+            cand = []
+            for f in files:
+                p = os.path.join(RESULT_CACHE_DIR, f)
+                if os.path.getsize(p) > 200_000:  # 玩具数据缓存很小，直接按体积粗滤
+                    cand.append(f)
+            cand.sort(key=lambda f: os.path.getmtime(os.path.join(RESULT_CACHE_DIR, f)), reverse=True)
+            for name in cand:
                 data = _load_result_cache(name[len("result_"):-len(".pkl")])
                 if data is None:
                     continue
@@ -380,8 +385,33 @@ def _build_payload(df, events, info, warnings) -> dict:
     ranked = sorted(events, key=lambda e: -int(e.get("frequency", 0)))
     shown_events = ranked[:max_events]
 
+    # 现算补充指标（峰值单日/涉及区域数）：不依赖缓存里的 dedup_metrics，改版即时生效
+    need_cids = {e["cluster_id"] for e in shown_events if "cluster_id" in e}
+    _grp = {cid: g for cid, g in df.groupby("cluster_id") if cid in need_cids} \
+        if "cluster_id" in df.columns else {}
+
+    def _extra_metrics(cid):
+        g = _grp.get(cid)
+        if g is None:
+            return {}
+        dm = {}
+        tv = g["submit_time"].dropna() if "submit_time" in g.columns else pd.Series(dtype="datetime64[ns]")
+        if not tv.empty:
+            vc = tv.dt.date.value_counts()
+            dm["peak_day_count"] = int(vc.iloc[0])
+            dm["peak_day_date"] = vc.index[0].strftime("%m-%d")
+        if "extracted_area" in g.columns:
+            ac = g["extracted_area"].astype(str).str.strip()
+            ac = ac[~ac.isin(["", "nan"])]
+            dm["area_count"] = int(ac.nunique())
+            if not ac.empty:
+                dm["area_top_name"] = str(ac.value_counts().index[0])
+        return dm
+
     events_json = []
     for e in shown_events:
+        dm = dict(e.get("dedup_metrics", {}))
+        dm.update(_extra_metrics(e.get("cluster_id")))
         events_json.append({
             "event_id": e["event_id"],
             "subject": e["event_subject"],
@@ -393,7 +423,11 @@ def _build_payload(df, events, info, warnings) -> dict:
             "first_seen": e["first_seen"],
             "last_seen": e["last_seen"],
             "trend": e.get("trend", ""),
-            "samples": [mask_pii(s) if isinstance(s, str) else s for s in e.get("sample_orders", [])],
+            "dedup_metrics": dm,
+            "samples": [mask_pii(s) if isinstance(s, str) else
+                        {"order_id": s.get("order_id", ""),
+                         "content": mask_pii(str(s.get("content", "")))}
+                        for s in e.get("sample_orders", [])],
             "daily": _event_daily(df, e["cluster_id"]),
             "areas": _event_areas(df, e["cluster_id"]),
         })
@@ -752,7 +786,7 @@ async def analyze(
         cache_key = None
         if cache_seed:
             cache_key = _result_cache_key(
-                cache_seed + "|tcm1.2", scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
+                cache_seed + "|tcm1.3", scope, freq_threshold, eps, min_samples, use_embedding, use_llm)
             cached = _load_result_cache(cache_key)
             if cached is not None:
                 STATE["df"], STATE["events"] = cached["df"], cached["events"]

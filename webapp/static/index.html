@@ -1348,16 +1348,14 @@ function selectEvent(i) {
   // 多频识别依据
   const m = e.dedup_metrics || {};
   const freqTagCls = m.freq_level === "高发" ? "tag-high" : (m.freq_level === "中频" ? "tag-mid" : "tag-low");
-  const subjTagCls = m.subject_type === "集中" ? "tag-conc" : "tag-disp";
   const areaTagCls = m.area_type === "集中" ? "tag-conc" : "tag-disp";
-  const submitterTag = m.submitter_type || "—";
   const grid = $("ev-dedup-grid");
   if (grid) {
     grid.innerHTML = [
       '<div class="dedup-card"><div class="dc-label">日均频次</div><div class="dc-value">' + (m.daily_avg || 0) + '<small>条/天</small></div><span class="dc-tag ' + freqTagCls + '">' + esc(m.freq_level || "—") + '</span></div>',
       '<div class="dedup-card"><div class="dc-label">首末间隔</div><div class="dc-value">' + esc(m.span_days || "—") + '</div><span class="dc-tag tag-disp">累计 ' + e.frequency + ' 条</span></div>',
-      '<div class="dedup-card"><div class="dc-label">独立提交人</div><div class="dc-value">' + (m.unique_submitters || 0) + '<small>人</small></div><span class="dc-tag tag-conc">' + esc(submitterTag) + '</span></div>',
-      '<div class="dedup-card"><div class="dc-label">主体集中度</div><div class="dc-value">' + (m.subject_concentration || 0) + '<small>%</small></div><span class="dc-tag ' + subjTagCls + '">' + esc(m.subject_type || "—") + '</span></div>',
+      '<div class="dedup-card"><div class="dc-label">峰值单日</div><div class="dc-value">' + (m.peak_day_count || 0) + '<small>条</small></div><span class="dc-tag ' + freqTagCls + '">' + esc(m.peak_day_date || "—") + '</span></div>',
+      '<div class="dedup-card"><div class="dc-label">涉及区域</div><div class="dc-value">' + (m.area_count || 0) + '<small>个</small></div><span class="dc-tag tag-disp">' + esc(m.area_top_name || "—") + '</span></div>',
       '<div class="dedup-card"><div class="dc-label">区域集中度</div><div class="dc-value">' + (m.area_concentration || 0) + '<small>%</small></div><span class="dc-tag ' + areaTagCls + '">' + esc(m.area_type || "—") + '</span></div>',
       '<div class="dedup-card"><div class="dc-label">判定结论</div><div class="dc-value" style="font-size:14px">' + (m.freq_level === "高发" ? "高度多频" : (m.freq_level === "中频" ? "中度多频" : "轻度多频")) + '</div><span class="dc-tag ' + freqTagCls + '">建议核查</span></div>',
     ].join("");

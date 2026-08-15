@@ -214,7 +214,8 @@ def _merge_by_signature(df, labels):
     sig_first, remap = {}, {}
     for cid in ids:
         sig = (mode_of(cid, "extracted_event"), mode_of(cid, "extracted_area"))
-        if not sig[0] and not sig[1]:
+        if not sig[0] or not sig[1]:
+            # 事件类型或区域任一缺失则不参与归并，避免跨类型/跨区域误并成巨簇
             remap[cid] = cid
             continue
         if sig in sig_first:
