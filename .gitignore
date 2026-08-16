@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+venv312/
 env/
 
 # 输出结果（每次运行重新生成，不入库）
@@ -23,6 +24,7 @@ models/
 .env
 *.log
 webapp/secrets.json
+textclean_module/config.yaml
 
 # 隐私文件（凭证/工单数据/清洗库/临时文件）严禁入库
 密钥/
