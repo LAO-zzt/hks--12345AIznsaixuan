@@ -25,11 +25,13 @@ MODEL_DIR = os.path.join(BASE_DIR, "models")
 USE_EMBEDDING = True
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
-# ---------------- 聚类参数（DBSCAN） ----------------
-CLUSTER_EPS = 0.5          # 邻域半径（余弦距离）
-CLUSTER_MIN_SAMPLES = 2    # 核心点最少样本数
+# ---------------- 聚类参数（判重分组主路线，任意规模一致） ----------------
+CLUSTER_EPS = 0.5          # 邻域半径（余弦距离，仅 DBSCAN 兜底路线使用）
+CLUSTER_MIN_SAMPLES = 2    # 核心点最少样本数（仅 DBSCAN 兜底路线使用）
 FALLBACK_RULE_GROUP = True # 聚类异常时是否回退规则分组
 CONSOLIDATE_BY_RULES = True # 聚类后按规则归并碎片簇、回收同签名噪声点
+# 判重统一走「归一事件+主体键」分组路线（O(n) 线性，12.8 万条约 4s），
+# 不再按规模切换 DBSCAN；该阈值仅作注释保留（已废弃规模分流）
 CLUSTER_MAX_ROWS = 15000
 
 # ---------------- 展示规模上限（超大数据防卡顿） ----------------

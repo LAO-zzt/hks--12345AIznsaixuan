@@ -136,6 +136,16 @@ class CleaningPipeline:
                 org_raw = ""
                 logger.debug(f"  [主体] 从标题提取命中黑名单，丢弃")
 
+        # 方案A+：劳动/欠薪场景，从全文抽公司主体（同一公司欠薪=同一事件，
+        # 比 community 更有区分度，先于 community 兜底）
+        if not org_raw:
+            from ticket_cleaner.extractors import _is_labor_context, _extract_labor_company
+            if _is_labor_context(record.content):
+                _company = _extract_labor_company(record.content)
+                if _company and not _is_blacklisted_subject(_company):
+                    org_raw, org_type, org_conf = _company, "企业", 0.9
+                    logger.debug(f"  [主体] 劳动场景公司优先: {org_raw}")
+
         # 方案B：2. 从地址community提取（地址解析最可靠）
         if not org_raw and addr["community"] and not _is_blacklisted_subject(addr["community"]):
             org_raw = addr["community"]

@@ -130,6 +130,142 @@ def _title_group_labels(df):
     return labels.astype(int)
 
 
+# ---------- 大数据路线（多频对齐版）：按 (归一事件, 主体键) 分组 ----------
+
+# 泛化主体后缀：镇街/社区/村级，不能单独作为"具体主体"键（需地址/公司信号补充）
+_GENERIC_SUBJ_SUFFIX = ("街道", "镇", "社区", "村", "居委会", "村委会")
+# 地址"地标词"：含地标才算具体地址信号，否则只到镇街级
+_ADDR_LANDMARK = ("小区", "花园", "公寓", "公馆", "家园", "雅苑", "名居", "庭院",
+                  "新城", "楼盘", "华庭", "市场", "广场", "大厦", "大楼", "写字楼",
+                  "中心", "工业区", "工业园", "公园", "路", "街", "大道", "巷", "号",
+                  "村", "社区", "苑", "府", "店", "铺", "酒店", "宾馆", "超市", "商场")
+
+
+def _apply_synonyms(text: str, syn: dict) -> str:
+    """按词典做同义词/别名归一（长词优先已在 load_synonyms 处理）。"""
+    for raw, std in syn.items():
+        if raw and raw in text:
+            text = text.replace(raw, std)
+    return text
+
+
+# 系统性事件（政务平台/社保医保类）：跨主体按事件归并（不同市民反映同一系统问题=同一事件）
+_SYSTEMIC_EVENTS = {"失业保险金"}
+
+# 场所专名后缀（提取"高黎市场"这类场所，作为同一主体/场所的分组键）
+_VENUE_SUFFIXES = ("商业街", "步行街", "美食城", "工业园", "工业区", "大排档", "烧烤店",
+                   "市场", "广场", "大厦", "大楼", "公园", "码头", "中心", "商场", "超市",
+                   "百货", "夜市", "车站", "酒店", "宾馆", "医院", "学校", "小学", "中学",
+                   "幼儿园", "餐厅", "饭店", "酒吧", "KTV", "ktv")
+# 场所名前的边界词：向左扫描遇到即停止（避免把"高黎社区/街道"并入"高黎市场"）
+_VENUE_BOUNDARY = "区社村号路街巷道门口的在场旁附近正现于（()），,、。;；"
+
+
+def _extract_venues(text: str) -> list:
+    """扫描文本，提取所有"场所名+后缀"候选（名称取后缀前 1..8 字，遇边界词截断）。"""
+    found = []
+    for suf in _VENUE_SUFFIXES:
+        start = 0
+        while True:
+            i = text.find(suf, start)
+            if i < 0:
+                break
+            j = i
+            chars = []
+            while j > 0 and text[j - 1] >= "\u4e00" and text[j - 1] <= "\u9fa5" \
+                    and text[j - 1] not in _VENUE_BOUNDARY and len(chars) < 8:
+                j -= 1
+                chars.insert(0, text[j])
+            name = "".join(chars)
+            if len(name) >= 2:
+                found.append(name + suf)
+            start = i + 1
+    return found
+
+
+def _best_venue(text: str) -> str:
+    """提取最紧凑的场所专名（如"高黎市场"）；无则空。"""
+    found = _extract_venues(text or "")
+    if not found:
+        return ""
+    return min(found, key=len)
+
+
+def _subject_key_series(df):
+    """
+    构造聚类用"主体键"（业务口径：同一管理对象/场所的工单应归为同一事件）。
+
+    优先级：具体主体（公司/小区/场所，非镇街级） > 地址/内容中的场所专名 >
+            含地标地址 > 社区+楼栋 > 镇街；无具体信号为空（系统性事件按事件归并）。
+    """
+    subj = df.get("extracted_subject", pd.Series(index=df.index, dtype=str)).fillna("").astype(str).str.strip()
+    addr = df.get("addr_norm", pd.Series(index=df.index, dtype=str)).fillna("").astype(str).str.strip()
+    comm = df.get("addr_community", pd.Series(index=df.index, dtype=str)).fillna("").astype(str).str.strip()
+    bld = df.get("addr_building", pd.Series(index=df.index, dtype=str)).fillna("").astype(str).str.strip()
+    content = df.get("content", pd.Series(index=df.index, dtype=str)).fillna("").astype(str).str.strip()
+    town = df.get("extracted_area", pd.Series(index=df.index, dtype=str)).fillna("").astype(str).str.strip()
+
+    keys = []
+    for s, a, c, b, t, ct in zip(subj, addr, comm, bld, town, content):
+        if s and len(s) >= 2 and not s.endswith(_GENERIC_SUBJ_SUFFIX):
+            keys.append(s)
+            continue
+        venue = _best_venue(a) or _best_venue(ct)
+        if venue:
+            keys.append(venue)
+            continue
+        a_clean = a.replace("街道", "")
+        if a and len(a) >= 4 and any(k in a_clean for k in _ADDR_LANDMARK):
+            keys.append(a)
+            continue
+        if c and b:
+            keys.append(c + b)
+            continue
+        if c:
+            keys.append(c)
+            continue
+        if t:
+            keys.append(t)
+            continue
+        keys.append("")
+    return pd.Series(keys, index=df.index)
+
+
+def _bigdata_labels(df):
+    """
+    判重分组键（所有规模统一使用）：归一事件（标题/事件类型经同义词归一） + 主体键。
+
+    - 事件键 = 标题即人工事件标签，经语义归一规则库对齐（同一事件的不同写法归为同一键）；
+      标题缺失时用抽取的事件类型兜底；
+    - 主体键 = 同一管理对象/场所（亦做别名归一，如 中电建九局→中电建）；
+    - 系统性事件（失业保险金等）跨主体按事件归并；
+    - 无具体主体信号时仅按事件归并。
+    返回 labels 数组（空键记为噪声 -1）。
+    """
+    from utils.helpers import load_synonyms
+    syn = load_synonyms()
+    cleaned = _clean_title_series(df)
+    # 事件键兜底：标题整列缺失时，改用抽取的事件类型（避免全空导致全噪声）
+    if cleaned.eq("").all() and "extracted_event" in df.columns:
+        cleaned = df["extracted_event"].fillna("").astype(str).str.strip()
+    canonical = cleaned.apply(lambda t: _apply_synonyms(t, syn))
+    subj_key = _subject_key_series(df).apply(lambda s: _apply_synonyms(s, syn))
+
+    keys = []
+    for ev, sk in zip(canonical, subj_key):
+        if ev:
+            if ev in _SYSTEMIC_EVENTS:
+                keys.append(ev)
+            else:
+                keys.append(ev + "|" + sk if sk else ev)
+        else:
+            keys.append("")
+    codes, _uniques = pd.factorize(pd.Series(keys, index=df.index), sort=False)
+    labels = codes.astype(int)
+    labels[canonical.values == ""] = -1
+    return labels
+
+
 def _consolidate(df, labels):
     """
     聚类后的规则归并（可解释的业务修正）：
@@ -244,34 +380,35 @@ def cluster_orders(df, eps=None, min_samples=None, use_embedding=None):
     df = df.copy().reset_index(drop=True)
     info = {"fallback_used": False, "messages": []}
 
-    # ---- 规模分流：超大数据走标题规则分组（DBSCAN 距离矩阵 O(n²) 不可行） ----
-    max_rows = getattr(config, "CLUSTER_MAX_ROWS", 15000)
-    if len(df) > max_rows and ("title" in df.columns or "normalized_title" in df.columns):
-        labels = _title_group_labels(df)
-        # 标题即事件分类：词典事件为空的行用清洗后标题回填，保证下游事件类型有值
+    # ---- 判重路线：统一走「归一事件+主体键」分组（O(n) 线性，任意规模精度一致） ----
+    # 仅当连事件信号都缺失（无标题且无事件类型）时才回退 DBSCAN 内容相似度
+    _has_title = "title" in df.columns or "normalized_title" in df.columns
+    _has_event = False
+    if not _has_title and "extracted_event" in df.columns:
+        _has_event = bool(df["extracted_event"].astype(str).str.strip().ne("").any())
+    if _has_title or _has_event:
+        labels = _bigdata_labels(df)
+        # 事件键即归一后的清洗标题（标题即事件分类）；空事件行回填归一标题保证下游有值
         cleaned = _clean_title_series(df)
+        if cleaned.eq("").all() and "extracted_event" in df.columns:
+            cleaned = df["extracted_event"].fillna("").astype(str).str.strip()
+        from utils.helpers import load_synonyms
+        syn = load_synonyms()
+        canonical = cleaned.apply(lambda t: _apply_synonyms(t, syn))
         if "extracted_event" not in df.columns:
             df["extracted_event"] = ""
         ev_empty = df["extracted_event"].astype(str).str.strip() == ""
-        df.loc[ev_empty, "extracted_event"] = cleaned[ev_empty].values
+        df.loc[ev_empty, "extracted_event"] = canonical[ev_empty].values
         valid = labels[labels != -1]
         info.update({
-            "method": "标题规则分组（大数据路线）",
+            "method": "判重分组（归一事件+主体键）",
             "fallback_used": False,
             "n_clusters": len(set(valid.tolist())) if len(valid) else 0,
             "coverage": float(len(valid) / len(labels)) if len(labels) else 0.0,
             "noise_count": int((labels == -1).sum()),
         })
         info["messages"].append(
-            "数据量 %d 条超过聚类适用规模（%d），已自动切换标题规则分组路线。" % (
-                len(df), max_rows))
-        if getattr(config, "MERGE_BY_SIGNATURE", True):
-            labels, n_merged = _merge_by_signature(df, labels)
-            if n_merged:
-                info["messages"].append(
-                    "签名归并：同区域同事件类型的簇已合并（归并 %d 个簇）。" % n_merged)
-                valid = labels[labels != -1]
-                info["n_clusters"] = len(set(valid.tolist())) if len(valid) else 0
+            "判重按「归一事件+主体」分组：同一主体/同一事件的多写法工单归并为同一多频事件。")
         df["cluster_id"] = labels
         return df, info
 

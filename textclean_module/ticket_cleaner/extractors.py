@@ -216,6 +216,54 @@ def _is_valid_org_name(raw: str) -> bool:
     return True
 
 
+# ---------- 劳动/欠薪场景公司抽取（多频分组用，治"同镇不同公司被并为一簇"） ----------
+
+_LABOR_CONTEXT_KW = ("拖欠", "欠薪", "克扣", "工资", "薪酬", "劳务", "工作", "工钱", "不发")
+# 公司名不应包含的套话/动作词（避免把"单位拖欠全厂"等误当公司名）
+_LABOR_NAME_BAD = ("拖欠", "欠薪", "克扣", "工资", "薪酬", "单位", "反映", "来电",
+                   "致电", "表示", "全厂", "全店", "存在", "正在", "以及", "公司地址",
+                   "项目", "要求", "希望", "请部", "介入")
+# 公司抽取模式（按优先级逐一尝试；每条独立 search+校验，避免贪婪跨模式吞套话）
+_LABOR_COMPANY_PATTERNS = [
+    re.compile(r"(?:名称|名字|单位名称)[:：]\s*([\u4e00-\u9fa5A-Za-z0-9]{2,25})"),
+    re.compile(r"项目单位[:：]\s*([\u4e00-\u9fa5A-Za-z0-9]{2,20})"),
+    re.compile(r"在([\u4e00-\u9fa5A-Za-z0-9]{2,25}?(?:有限公司|公司|厂|集团|分公司|劳务|服务部|经营部|物流园))工作"),
+    re.compile(r"(?:被|反映被)(?:佛山市顺德区|佛山市|顺德区)?"
+               r"([\u4e00-\u9fa5A-Za-z0-9]{2,25}?(?:有限公司|公司|厂|集团|分公司|劳务|服务部|经营部))(?=[\s，,。？（(]|拖欠)"),
+    re.compile(r"([\u4e00-\u9fa5A-Za-z0-9]{2,20}(?:分拨中心|物流园|工业园|有限公司|公司|厂|集团|分公司|劳务|服务部|经营部))[（(]?地址"),
+    re.compile(r"([\u4e00-\u9fa5A-Za-z0-9]{2,20}(?:有限公司|公司|厂|集团|分公司|劳务|服务部|经营部))\s*(?:，|,)?\s*拖欠"),
+    re.compile(r"([\u4e00-\u9fa5A-Za-z0-9]{2,20}(?:有限公司|公司|厂|集团|分公司|劳务|服务部|经营部))[的]?(?:员工|人员|工人|职工)"),
+]
+# 泛化主体后缀：公司名不应只是镇街/社区
+_GENERIC_ORG_SUFFIX = ("街道", "镇", "社区", "村", "居委会", "村委会")
+
+
+def _is_labor_context(text: str) -> bool:
+    """是否劳动/欠薪相关文本（触发公司主体优先）。"""
+    return any(k in text for k in _LABOR_CONTEXT_KW)
+
+
+def _valid_labor_company(raw: str) -> bool:
+    """公司候选是否可作主体：非空、非泛化后缀、不含套话。"""
+    if not raw or len(raw) < 2:
+        return False
+    if raw.endswith(_GENERIC_ORG_SUFFIX):
+        return False
+    if any(k in raw for k in _LABOR_NAME_BAD):
+        return False
+    return _is_valid_org_name(raw) and not _is_blacklisted_subject(raw)
+
+
+def _extract_labor_company(text: str) -> str:
+    """从欠薪/劳动文本中提取公司主体；失败返回空字符串。"""
+    for pat in _LABOR_COMPANY_PATTERNS:
+        for m in pat.finditer(text):
+            raw = next((g for g in m.groups() if g), "").strip()
+            if _valid_labor_company(raw):
+                return raw
+    return ""
+
+
 def extract_organization(text: str) -> Tuple[str, str, float]:
     """抽取主体。返回 (raw, entity_type, confidence)。
 
@@ -225,6 +273,12 @@ def extract_organization(text: str) -> Tuple[str, str, float]:
     """
     if not text:
         return "", "", 0.0
+
+    # 劳动/欠薪场景：公司主体优先（"同一公司欠薪"是比社区更有区分度的多频键）
+    if _is_labor_context(text):
+        company = _extract_labor_company(text)
+        if company:
+            return company, "企业", 0.9
 
     # 预扫描所有社区/小区匹配（用于社区优先覆盖）
     community_matches = []
