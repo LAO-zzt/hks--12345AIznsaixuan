@@ -35,6 +35,7 @@ textclean_module/data/*.db-shm
 textclean_module/data/*.db-wal
 _tmp_*.py
 _backup_*.html
+tests/textclean_module/
 
 # IDE
 .idea/
